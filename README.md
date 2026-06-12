@@ -1,83 +1,95 @@
-# CRISP-DM - Simulacao Multiagente Baseada em Teoria dos Jogos
+# CRISP-DM - Simulacao Multiagente para Decisao Financeira Baseada em Teoria dos Jogos
 
 ## Estado Atual
 
-Este repositorio ainda nao possui implementacao. Para estruturar o projeto com um caminho viavel, foi definido um recorte inicial recomendado:
+O repositorio ainda nao possui implementacao. O projeto foi redirecionado para um problema de **decisao financeira**, com um recorte inicial recomendado:
 
-**simular escolhas estrategicas de mobilidade urbana na Regiao Metropolitana de Sao Paulo (RMSP) como um jogo de congestionamento**, comparando equilibrio egoista, cenarios coordenados e politicas de intervencao.
+**simular a alocacao de portfolio de investidores brasileiros entre renda fixa, fundos e renda variavel sob choques de juros, inflacao e comportamento de manada.**
 
-Esse recorte e adaptavel. Se depois voce quiser migrar para outro dominio, a estrutura abaixo continua valida.
+## Aviso de Escopo
+
+Este projeto deve ser tratado como pesquisa e modelagem computacional. Ele **nao** deve ser usado como recomendacao automatica de investimento.
 
 ## Resumo do Projeto
 
-O projeto passa a investigar como agentes com objetivos proprios tomam decisoes de rota, horario e uso de infraestrutura em uma rede urbana congestionada. A ideia central e modelar a cidade como um sistema multiagente em que o custo de cada agente depende das escolhas dos demais.
+O objetivo e construir uma simulacao multiagente em que investidores com perfis distintos tomam decisoes recorrentes de alocacao de capital. Cada agente busca melhorar seu proprio retorno ajustado ao risco, mas o resultado agregado depende das decisoes dos demais, da liquidez e do ambiente macrofinanceiro.
 
 Na primeira versao, o foco recomendado e:
 
-- agentes de deslocamento pendular;
-- agentes de carga urbana como extensao de fase 2;
-- um gestor publico opcional, modelado como regulador ou lider de um jogo do tipo Stackelberg.
+- investidores pessoa fisica com perfis conservador, moderado e agressivo;
+- ativos agregados, e nao papeis individuais demais;
+- comparacao entre comportamento disciplinado, reativo e imitativo.
 
 ## Recorte Inicial Recomendado
 
 ### Tema
 
-Jogos de congestionamento aplicados a mobilidade urbana da RMSP.
+Decisao de alocacao de portfolio com agentes heterogeneos.
 
 ### Pergunta central
 
-Como escolhas estrategicas descentralizadas alteram o desempenho global da rede urbana quando passageiros e operadores de carga competem pelos mesmos recursos viarios?
+Como heterogeneidade de perfil, aprendizagem social e choques macroeconomicos alteram as decisoes de alocacao e o desempenho agregado de um mercado simplificado?
 
 ### Objetivo geral
 
-Construir uma simulacao multiagente capaz de comparar:
+Construir uma simulacao multiagente para comparar estrategias de alocacao financeira em cenarios de:
 
-- equilibrio descentralizado dos agentes;
-- solucao socialmente coordenada;
-- cenarios de intervencao do poder publico.
+- juros altos e baixos;
+- inflacao persistente ou controlada;
+- informacao completa, ruidosa ou atrasada;
+- baixa ou alta imitacao entre agentes.
 
 ### Objetivos especificos
 
-- representar a rede urbana e os corredores relevantes;
-- estimar demandas de deslocamento a partir de bases publicas;
-- definir funcoes de custo dependentes de congestionamento;
-- medir ineficiencia do equilibrio estrategico;
-- testar politicas como informacao de rota, janelas de carga e deslocamento modal.
+- modelar agentes com preferencias de risco distintas;
+- representar classes de ativos relevantes ao investidor brasileiro;
+- incorporar variaveis macro como Selic, inflacao e cambio;
+- medir herd behavior, rotatividade e concentracao de portfolio;
+- comparar desempenho individual e estabilidade agregada.
 
 ## 1. Business Understanding (Entendimento do Problema Cientifico)
 
 ### Problema cientifico
 
-Em sistemas urbanos, cada agente tenta minimizar seu proprio custo de deslocamento, mas o resultado agregado pode ser ineficiente. Esse tipo de conflito entre racionalidade individual e desempenho coletivo e um problema classico de teoria dos jogos e e especialmente relevante em redes de transporte congestionadas.
+Em mercados financeiros, a decisao de cada investidor nao depende apenas de fundamentos. Ela tambem responde a sinais de mercado, ao comportamento observado em outros agentes e a mudancas no ambiente macroeconomico. Isso cria um sistema interdependente, no qual decisoes individuais podem amplificar volatilidade, concentracao e perdas coletivas.
 
 ### Agentes do modelo
 
-- Passageiros: escolhem rota, horario e, em versoes futuras, modo de transporte.
-- Operadores de carga: escolhem janelas, rotas e perfis de distribuicao.
-- Gestor publico: altera regras, incentivos ou restricoes da rede.
+- Investidor conservador: prefere liquidez, baixa volatilidade e preservacao de capital.
+- Investidor moderado: combina protecao e busca de retorno.
+- Investidor agressivo: aceita maior risco e maior exposicao a renda variavel.
+- Ambiente de mercado: reage ao fluxo agregado por meio de penalidades simplificadas de crowding, volatilidade ou custo de ajuste.
+
+### Ativos agregados recomendados
+
+- caixa / posicao neutra;
+- Tesouro Selic;
+- Tesouro IPCA+;
+- fundos de renda fixa ou DI;
+- renda variavel agregada, por exemplo indice ou ETF.
 
 ### Estrutura de jogo recomendada
 
-- Jogo base: congestion game / routing game.
-- Equilibrio de referencia: equilibrio egoista dos agentes.
-- Comparacao normativa: system optimum.
-- Extensao futura: jogo lider-seguidor para avaliar politicas publicas.
+- Jogo base: jogo repetido de alocacao de portfolio.
+- Interacao: o payoff de cada agente depende do cenario macro e da escolha agregada dos demais.
+- Benchmark individual: retorno ajustado ao risco.
+- Benchmark coletivo: menor concentracao excessiva, menor drawdown agregado e maior robustez do sistema.
 
 ### Hipoteses de trabalho
 
 | ID | Hipotese | Como testar |
 | --- | --- | --- |
-| H1 | O equilibrio egoista produz maior atraso medio e maior custo total do que uma alocacao coordenada da demanda. | Comparar equilibrio descentralizado vs system optimum em cenarios identicos de demanda. |
-| H2 | Informacao de rota disponibilizada apenas para parte dos agentes pode deslocar congestionamento e piorar o desempenho agregado em corredores criticos. | Rodar cenarios com informacao total, parcial e nula. |
-| H3 | Politicas de janela horaria para carga urbana reduzem mais o custo total da rede do que restricoes uniformes e pouco segmentadas. | Comparar cenarios com janelas por zona/setor vs restricoes genericas. |
-| H4 | Pequenas mudancas modais em corredores saturados reduzem desproporcionalmente o custo coletivo da rede. | Simular transferencia parcial de demanda do carro para o transporte coletivo. |
+| H1 | Choques de alta de juros aumentam a migracao agregada para ativos de renda fixa e reduzem a participacao de renda variavel. | Comparar alocacoes medias antes e depois de choques na Selic. |
+| H2 | Comportamento de manada aumenta concentracao de portfolio e piora drawdowns em momentos de estresse. | Simular diferentes niveis de imitacao e medir concentracao e perdas maximas. |
+| H3 | Rebalanceamento muito frequente com sinais ruidosos reduz desempenho ajustado ao risco em relacao a estrategias mais lentas e disciplinadas. | Comparar Sharpe simplificado, turnover e retorno liquido por regime de decisao. |
+| H4 | Maior heterogeneidade entre perfis de risco reduz sincronizacao extrema e melhora a estabilidade agregada do sistema. | Simular mercados homogeneos vs heterogeneos e medir volatilidade e dispersao das alocacoes. |
 
 ### Criterios de sucesso
 
-- Conseguir reproduzir padroes agregados coerentes com as bases observadas.
-- Medir tempo medio, atraso total e custo total por cenario.
-- Estimar diferenca entre equilibrio egoista e solucao coordenada.
-- Produzir cenarios comparaveis e interpretaveis para suporte a decisao.
+- Produzir uma simulacao coerente com regimes macro observados nas bases.
+- Medir alocacao media, turnover, concentracao e drawdown por cenario.
+- Comparar desempenho de agentes e estabilidade do sistema.
+- Identificar quando imitacao e reatividade degradam resultados agregados.
 
 ## 2. Data Understanding (Entendimento dos Dados)
 
@@ -87,11 +99,10 @@ As bases priorizadas para o recorte inicial estao listadas em [docs/bases.md](/U
 
 | Base | Papel no projeto | Prioridade |
 | --- | --- | --- |
-| Pesquisa Origem e Destino 2023 - Metro SP | Estimar demanda de passageiros e padroes de deslocamento na RMSP | Alta |
-| Pesquisa OD Cargas - CET SP | Modelar agentes de carga urbana, setores e fluxos logisticos | Media |
-| OpenStreetMap / Geofabrik Sudeste | Construir a rede viaria para simulacao | Alta |
-| API Olho Vivo - SPTrans | Representar oferta basica de linhas, paradas e corredores | Media |
-| SIMOB - ANTP | Calibrar indicadores agregados e benchmarking | Media |
+| BCB / SGS | Series macrofinanceiras como juros e cambio | Alta |
+| Tesouro Transparente | Taxas, vendas, resgates e perfil de investidores do Tesouro Direto | Alta |
+| CVM Fundos | Patrimonio, cotistas, informes diarios e cadastro de fundos | Alta |
+| B3 Historico | Cotas e precos historicos de ativos do mercado a vista | Media |
 
 ### Artigos e referencias base
 
@@ -99,41 +110,38 @@ As referencias iniciais foram organizadas em [docs/referencias.md](/Users/munare
 
 ### Variaveis de interesse
 
-As variaveis abaixo combinam itens confirmados nas fontes e campos derivados da modelagem:
-
-- origem e destino por zona;
-- tipo de agente;
-- horario ou janela de deslocamento;
-- tipo de veiculo ou modo;
-- atributos da rede viaria;
-- custos de percurso dependentes de uso;
-- parametros de politica publica por cenario.
+- taxa Selic e variaveis macro de regime;
+- precos, retornos e volatilidade por classe de ativo;
+- perfil e movimentacao de investidores no Tesouro Direto;
+- patrimonio liquido, cotistas e fluxos em fundos;
+- pesos de alocacao por agente e classe de ativo;
+- turnover, drawdown, concentracao e dispersao.
 
 ### Riscos e limitacoes iniciais
 
-- O esquema detalhado da base OD 2023 do Metro precisa ser confirmado apos download.
-- A integracao entre passageiros e carga aumenta bastante a complexidade; por isso, a fase 1 deve priorizar passageiros.
-- Dados operacionais detalhados de tempo real podem exigir simplificacoes ou cenarios sinteticos.
+- A base da B3 e historica, mas nao vem ajustada por inflacao ou proventos.
+- As bases da CVM e do Tesouro sao volumosas; a fase inicial deve trabalhar com agregacoes e amostras.
+- O modelo nao observara a decisao real de cada investidor individual; ele inferira comportamentos por perfis sinteticos.
 
 ## 3. Data Preparation (Preparacao dos Dados)
 
 ### Pipeline recomendado
 
-1. Catalogar e baixar as bases publicas prioritarias.
-2. Padronizar identificadores de zonas e recortes espaciais.
-3. Extrair a rede viaria do OpenStreetMap.
-4. Construir matrizes OD de passageiros.
-5. Adicionar agentes de carga como extensao de fase 2.
-6. Gerar agentes sinteticos a partir das distribuicoes observadas.
-7. Definir funcoes de custo, capacidade e penalidade por congestionamento.
+1. Baixar as series macro do BCB.
+2. Baixar taxas, vendas e resgates do Tesouro Direto.
+3. Baixar cadastro e informes diarios de fundos na CVM.
+4. Construir classes agregadas de ativos para a simulacao.
+5. Gerar agentes sinteticos com perfis de risco e regras de decisao.
+6. Calibrar cenarios macro e regras de payoff.
+7. Rodar simulacoes com diferentes niveis de imitacao, ruido e rebalanceamento.
 
 ### Saidas esperadas
 
-- grafo viario processado;
-- matrizes OD por cenario;
-- configuracoes de agentes;
-- parametros de custo por aresta ou corredor;
-- conjuntos de cenarios para simulacao.
+- base macro consolidada;
+- painel de ativos agregados;
+- configuracao de agentes;
+- cenarios de simulacao;
+- metricas de risco, retorno e estabilidade.
 
 ## Estrutura Recomendada do Repositorio
 
@@ -158,8 +166,8 @@ teoria_jogos/
 
 ## Proximas Etapas
 
-1. Baixar e inspecionar a base da Pesquisa OD 2023 do Metro.
-2. Baixar a rede viaria do OpenStreetMap para o recorte escolhido.
-3. Definir o primeiro modelo de custo por congestionamento.
-4. Implementar uma simulacao baseline com agentes de passageiros.
-5. Adicionar agentes de carga e politicas de intervencao na fase seguinte.
+1. Definir exatamente quais classes de ativos entrarao no baseline.
+2. Baixar as primeiras bases oficiais e inspecionar esquema e granularidade.
+3. Implementar agentes sinteticos e funcoes de utilidade simplificadas.
+4. Rodar um baseline sem manada e outro com imitacao.
+5. Medir impacto de choques de juros sobre a alocacao agregada.
