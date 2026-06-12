@@ -5,12 +5,13 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 from teoria_jogos.analysis.reports import generate_analysis_outputs
-from teoria_jogos.data.b3 import build_monthly_equity_returns, parse_cotahist_symbol
+from teoria_jogos.data.b3 import build_b3_equity_dataset_range, build_monthly_equity_returns, parse_cotahist_symbol
 from teoria_jogos.data.cvm import summarize_cvm_inf_diario
 from teoria_jogos.data.tesouro import summarize_tesouro_rates
-from teoria_jogos.models.calibration import calibrate_parameters
+from teoria_jogos.models.calibration import calibrate_parameters, load_simulation_calibration
 
 
 class DataSourcesTest(unittest.TestCase):
@@ -35,6 +36,34 @@ class DataSourcesTest(unittest.TestCase):
             self.assertEqual(len(observations), 2)
             self.assertEqual(monthly[1]["month"], "2024-02-01")
             self.assertAlmostEqual(float(monthly[1]["equity_return"]), 0.1)
+
+    def test_build_b3_equity_dataset_range_merges_years(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for year, date_value, close in [
+                (2024, "20241230", 10000),
+                (2025, "20250131", 10500),
+            ]:
+                with zipfile.ZipFile(root / f"COTAHIST_A{year}.ZIP", "w") as archive:
+                    archive.writestr(f"COTAHIST_A{year}.TXT", cotahist_line(date_value, "BOVA11", close))
+
+            def fake_download(year: int, raw_dir: Path) -> Path:
+                return root / f"COTAHIST_A{year}.ZIP"
+
+            with patch("teoria_jogos.data.b3.download_cotahist_year", side_effect=fake_download):
+                records = build_b3_equity_dataset_range(
+                    start_year=2024,
+                    end_year=2025,
+                    symbol="BOVA11",
+                    raw_dir=root,
+                    daily_output=root / "daily.csv",
+                    monthly_output=root / "monthly.csv",
+                )
+
+            self.assertEqual(len(records), 2)
+            self.assertAlmostEqual(float(records[1]["equity_return"]), 0.05)
+            self.assertTrue((root / "daily.csv").exists())
+            self.assertTrue((root / "monthly.csv").exists())
 
     def test_summarize_tesouro_rates_latest_date(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -89,6 +118,7 @@ class DataSourcesTest(unittest.TestCase):
             profiles = root / "profiles.csv"
             output_dir = root / "report"
             hypotheses = root / "avaliacao.md"
+            final_report = root / "relatorio_final.md"
 
             baseline.write_text(json.dumps(summary_row("none")), encoding="utf-8")
             scenarios.write_text(
@@ -118,11 +148,12 @@ class DataSourcesTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            generate_analysis_outputs(baseline, scenarios, shocks, rebalances, profiles, output_dir, hypotheses)
+            generate_analysis_outputs(baseline, scenarios, shocks, rebalances, profiles, output_dir, hypotheses, final_report)
 
             self.assertTrue((output_dir / "final_metrics.csv").exists())
             self.assertTrue((output_dir / "shock_returns.svg").exists())
             self.assertIn("H1", hypotheses.read_text(encoding="utf-8"))
+            self.assertIn("Relatorio Final", final_report.read_text(encoding="utf-8"))
 
     def test_calibrate_parameters_outputs_risk_estimates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -157,9 +188,12 @@ class DataSourcesTest(unittest.TestCase):
             )
 
             calibration = calibrate_parameters(macro, equity, tesouro, cvm, output)
+            loaded = load_simulation_calibration(output)
 
             self.assertTrue(output.exists())
             self.assertIn("renda_variavel", calibration["risco_sugerido"])
+            self.assertIn("renda_variavel", loaded["asset_risk"])
+            self.assertIn("crowding_penalty", loaded)
 
 
 def cotahist_line(date: str, symbol: str, close_cents: int) -> str:

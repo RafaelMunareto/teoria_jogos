@@ -35,10 +35,21 @@ class BaselineSimulationTest(unittest.TestCase):
             },
         ]
 
-        history, summary = run_baseline_simulation(macro, agent_count=9, seed=7)
+        history, summary = run_baseline_simulation(
+            macro,
+            agent_count=9,
+            seed=7,
+            asset_risk={"renda_variavel": 0.35},
+            crowding_penalty=0.03,
+            calibration_source="test_calibration.json",
+        )
 
         self.assertEqual(len(history), 2)
         self.assertEqual(summary["agent_count"], 9)
+        self.assertEqual(summary["calibration_source"], "test_calibration.json")
+        self.assertEqual(summary["asset_risk_renda_variavel"], 0.35)
+        self.assertIn("risk_adjusted_return", summary)
+        self.assertIn("avg_turnover", summary)
         final_weight_sum = sum(float(summary[f"final_weight_{asset}"]) for asset in ASSETS)
         self.assertEqual(round(final_weight_sum, 10), 1.0)
         self.assertGreater(float(summary["final_total_wealth"]), 0)

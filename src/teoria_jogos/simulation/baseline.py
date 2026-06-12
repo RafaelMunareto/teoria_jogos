@@ -19,6 +19,8 @@ ASSET_RISK = {
     "renda_variavel": 0.22,
 }
 
+DEFAULT_CROWDING_PENALTY = 0.020
+
 
 @dataclass(frozen=True)
 class AgentProfile:
@@ -89,6 +91,9 @@ def run_baseline_simulation(
     rebalance_multiplier: float = 1.0,
     signal_noise: float = 0.0,
     profile_mode: str = "heterogeneous",
+    asset_risk: dict[str, float] | None = None,
+    crowding_penalty: float = DEFAULT_CROWDING_PENALTY,
+    calibration_source: str = "default",
 ) -> tuple[list[dict[str, float | str]], dict[str, float | str]]:
     if not macro_records:
         raise ValueError("macro_records nao pode ser vazio")
@@ -98,6 +103,7 @@ def run_baseline_simulation(
     rng = random.Random(seed)
     macro_records = apply_shock_scenario(macro_records, shock_scenario)
     asset_returns = build_asset_returns(macro_records, rng)
+    asset_risk_values = resolve_asset_risk(asset_risk)
     agents = create_agents(agent_count, rng, profile_mode=profile_mode)
     market_weights = average_weights(agent.weights for agent in agents)
 
@@ -122,6 +128,8 @@ def run_baseline_simulation(
                 imitation_multiplier=imitation_multiplier,
                 rng=rng,
                 signal_noise=signal_noise,
+                asset_risk=asset_risk_values,
+                crowding_penalty=crowding_penalty,
             )
             rebalance_speed = max(0.0, min(1.0, agent.profile.rebalance_speed * rebalance_multiplier))
             agent.weights = blend_weights(previous_weights, target_weights, rebalance_speed)
@@ -162,6 +170,9 @@ def run_baseline_simulation(
         rebalance_multiplier,
         signal_noise,
         profile_mode,
+        asset_risk_values,
+        crowding_penalty,
+        calibration_source,
     )
     return history, summary
 
@@ -173,6 +184,9 @@ def run_scenario_comparison(
     rebalance_cost: float = 0.001,
     seed: int = 42,
     shock_scenario: str = "none",
+    asset_risk: dict[str, float] | None = None,
+    crowding_penalty: float = DEFAULT_CROWDING_PENALTY,
+    calibration_source: str = "default",
 ) -> list[dict[str, float | str]]:
     comparison = []
 
@@ -184,6 +198,9 @@ def run_scenario_comparison(
             rebalance_cost=rebalance_cost,
             seed=seed,
             shock_scenario=shock_scenario,
+            asset_risk=asset_risk,
+            crowding_penalty=crowding_penalty,
+            calibration_source=calibration_source,
         )
         comparison.append({"scenario": f"imitation_{imitation_level:g}", **summary})
 
@@ -197,6 +214,9 @@ def run_shock_comparison(
     imitation_multiplier: float = 1.0,
     rebalance_cost: float = 0.001,
     seed: int = 42,
+    asset_risk: dict[str, float] | None = None,
+    crowding_penalty: float = DEFAULT_CROWDING_PENALTY,
+    calibration_source: str = "default",
 ) -> list[dict[str, float | str]]:
     comparison = []
 
@@ -208,6 +228,9 @@ def run_shock_comparison(
             rebalance_cost=rebalance_cost,
             seed=seed,
             shock_scenario=shock_scenario,
+            asset_risk=asset_risk,
+            crowding_penalty=crowding_penalty,
+            calibration_source=calibration_source,
         )
         comparison.append({"scenario": shock_scenario, **summary})
 
@@ -220,25 +243,31 @@ def run_rebalance_comparison(
     imitation_multiplier: float = 1.0,
     rebalance_cost: float = 0.001,
     seed: int = 42,
+    asset_risk: dict[str, float] | None = None,
+    crowding_penalty: float = DEFAULT_CROWDING_PENALTY,
+    calibration_source: str = "default",
 ) -> list[dict[str, float | str]]:
     scenarios = [
-        ("slow_clean", 0.5, 0.0),
-        ("base_clean", 1.0, 0.0),
-        ("fast_clean", 1.5, 0.0),
-        ("fast_noisy", 1.5, 0.010),
-        ("very_fast_noisy", 2.0, 0.020),
+        ("slow_clean", 0.5, 0.000, 1.0),
+        ("base_clean", 1.0, 0.000, 1.0),
+        ("fast_clean", 1.5, 0.000, 1.2),
+        ("fast_noisy", 1.8, 0.025, 2.5),
+        ("very_fast_noisy", 2.8, 0.080, 8.0),
     ]
     comparison = []
 
-    for scenario_name, rebalance_multiplier, signal_noise in scenarios:
+    for scenario_name, rebalance_multiplier, signal_noise, cost_multiplier in scenarios:
         _, summary = run_baseline_simulation(
             macro_records,
             agent_count=agent_count,
             imitation_multiplier=imitation_multiplier,
-            rebalance_cost=rebalance_cost,
+            rebalance_cost=rebalance_cost * cost_multiplier,
             seed=seed,
             rebalance_multiplier=rebalance_multiplier,
             signal_noise=signal_noise,
+            asset_risk=asset_risk,
+            crowding_penalty=crowding_penalty,
+            calibration_source=calibration_source,
         )
         comparison.append({"scenario": scenario_name, **summary})
 
@@ -251,6 +280,9 @@ def run_profile_comparison(
     imitation_multiplier: float = 1.0,
     rebalance_cost: float = 0.001,
     seed: int = 42,
+    asset_risk: dict[str, float] | None = None,
+    crowding_penalty: float = DEFAULT_CROWDING_PENALTY,
+    calibration_source: str = "default",
 ) -> list[dict[str, float | str]]:
     profile_modes = [
         "heterogeneous",
@@ -268,6 +300,9 @@ def run_profile_comparison(
             rebalance_cost=rebalance_cost,
             seed=seed,
             profile_mode=profile_mode,
+            asset_risk=asset_risk,
+            crowding_penalty=crowding_penalty,
+            calibration_source=calibration_source,
         )
         comparison.append({"scenario": profile_mode, **summary})
 
@@ -333,6 +368,8 @@ def choose_target_weights(
     imitation_multiplier: float,
     rng: random.Random,
     signal_noise: float,
+    asset_risk: dict[str, float],
+    crowding_penalty: float,
 ) -> dict[str, float]:
     scores = {}
     market_stress = max(0.0, -asset_returns["renda_variavel"])
@@ -341,12 +378,12 @@ def choose_target_weights(
 
     for asset in ASSETS:
         expected_return = asset_returns[asset] + rng.gauss(0.0, signal_noise)
-        risk_penalty = profile.risk_aversion * ASSET_RISK[asset] * 0.004
+        risk_penalty = profile.risk_aversion * asset_risk[asset] * 0.004
         base_anchor = profile.base_weights[asset] * 0.018
         imitation_anchor = (market_weights[asset] - profile.base_weights[asset]) * imitation_strength * 0.025
-        crowding_penalty = max(0.0, market_weights[asset] - profile.base_weights[asset]) * 0.020
+        crowding_cost = max(0.0, market_weights[asset] - profile.base_weights[asset]) * crowding_penalty
         risk_off_bonus = risk_off_score(asset, market_stress)
-        scores[asset] = expected_return - risk_penalty + base_anchor + imitation_anchor - crowding_penalty + risk_off_bonus
+        scores[asset] = expected_return - risk_penalty + base_anchor + imitation_anchor - crowding_cost + risk_off_bonus
 
     return softmax(scores, temperature=0.060)
 
@@ -390,9 +427,16 @@ def summarize(
     rebalance_multiplier: float,
     signal_noise: float,
     profile_mode: str,
+    asset_risk: dict[str, float],
+    crowding_penalty: float,
+    calibration_source: str,
 ) -> dict[str, float | str]:
     final = history[-1]
     returns = [float(row["avg_agent_return"]) for row in history]
+    turnovers = [float(row["avg_turnover"]) for row in history]
+    avg_return = mean(returns)
+    return_volatility = stdev(returns)
+    risk_adjusted_return = safe_ratio(avg_return, return_volatility)
 
     return {
         "agent_count": agent_count,
@@ -404,14 +448,29 @@ def summarize(
         "rebalance_multiplier": rebalance_multiplier,
         "signal_noise": signal_noise,
         "profile_mode": profile_mode,
+        "crowding_penalty": crowding_penalty,
+        "calibration_source": calibration_source,
         "final_total_wealth": float(final["total_wealth"]),
         "cumulative_return": (float(final["total_wealth"]) / agent_count) - 1,
-        "avg_monthly_return": mean(returns),
-        "return_volatility": stdev(returns),
+        "avg_monthly_return": avg_return,
+        "return_volatility": return_volatility,
+        "risk_adjusted_return": risk_adjusted_return,
+        "avg_turnover": mean(turnovers),
         "max_drawdown": max_drawdown,
         "final_hhi_concentration": float(final["hhi_concentration"]),
+        **{f"asset_risk_{asset}": asset_risk[asset] for asset in ASSETS},
         **{f"final_weight_{asset}": float(final[f"weight_{asset}"]) for asset in ASSETS},
     }
+
+
+def resolve_asset_risk(asset_risk: dict[str, float] | None) -> dict[str, float]:
+    resolved = dict(ASSET_RISK)
+    if not asset_risk:
+        return resolved
+    for asset, value in asset_risk.items():
+        if asset in resolved:
+            resolved[asset] = max(0.0, float(value))
+    return resolved
 
 
 def apply_shock_scenario(
@@ -536,3 +595,9 @@ def stdev(values: Iterable[float]) -> float:
     avg = mean(values)
     variance = sum((value - avg) ** 2 for value in values) / (len(values) - 1)
     return math.sqrt(variance)
+
+
+def safe_ratio(numerator: float, denominator: float) -> float:
+    if denominator == 0:
+        return 0.0
+    return numerator / denominator

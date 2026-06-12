@@ -6,6 +6,9 @@ import math
 from pathlib import Path
 
 
+ASSET_KEYS = ("cash", "tesouro_selic", "tesouro_ipca", "fundos_rf", "renda_variavel")
+
+
 def calibrate_parameters(
     macro_path: Path,
     equity_monthly_path: Path,
@@ -72,6 +75,22 @@ def calibrate_parameters(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(calibration, indent=2, ensure_ascii=False), encoding="utf-8")
     return calibration
+
+
+def load_simulation_calibration(path: Path) -> dict[str, object]:
+    calibration = json.loads(path.read_text(encoding="utf-8"))
+    risk_values = calibration.get("risco_sugerido", {})
+    behavioral = calibration.get("parametros_comportamentais", {})
+
+    return {
+        "source": str(path),
+        "asset_risk": {
+            asset: float(risk_values[asset])
+            for asset in ASSET_KEYS
+            if asset in risk_values
+        },
+        "crowding_penalty": float(behavioral.get("crowding_penalty_sugerido", 0.02)),
+    }
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:

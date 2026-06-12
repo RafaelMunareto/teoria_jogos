@@ -4,12 +4,13 @@ import argparse
 from pathlib import Path
 
 from teoria_jogos.analysis.reports import generate_analysis_outputs
-from teoria_jogos.data.b3 import build_b3_equity_dataset, enrich_macro_with_equity
+from teoria_jogos.data.b3 import build_b3_equity_dataset, build_b3_equity_dataset_range, enrich_macro_with_equity
 from teoria_jogos.data.bcb import download_bcb_macro_dataset, read_macro_csv
 from teoria_jogos.data.cvm import build_cvm_summary
 from teoria_jogos.data.tesouro import build_tesouro_summary
-from teoria_jogos.models.calibration import calibrate_parameters
+from teoria_jogos.models.calibration import calibrate_parameters, load_simulation_calibration
 from teoria_jogos.simulation.baseline import (
+    DEFAULT_CROWDING_PENALTY,
     run_baseline_simulation,
     run_profile_comparison,
     run_rebalance_comparison,
@@ -39,6 +40,7 @@ DEFAULT_CVM_SUMMARY_PATH = Path("data/processed/cvm_funds_summary.csv")
 DEFAULT_CALIBRATION_PATH = Path("data/processed/calibration_params.json")
 DEFAULT_REPORT_DIR = Path("outputs/report")
 DEFAULT_HYPOTHESIS_PATH = Path("docs/avaliacao_hipoteses.md")
+DEFAULT_FINAL_REPORT_PATH = Path("docs/relatorio_final.md")
 
 
 def main() -> None:
@@ -56,7 +58,9 @@ def main() -> None:
     fetch_parser.add_argument("--no-ibovespa", action="store_true", help="Nao tenta baixar a serie SGS 7.")
 
     b3_parser = subparsers.add_parser("fetch-b3-equity", help="Baixa B3 COTAHIST e extrai um ativo como proxy de renda variavel.")
-    b3_parser.add_argument("--year", type=int, default=2024)
+    b3_parser.add_argument("--year", type=int, default=None, help="Ano unico. Se informado, sobrepoe start/end year.")
+    b3_parser.add_argument("--start-year", type=int, default=2020)
+    b3_parser.add_argument("--end-year", type=int, default=2025)
     b3_parser.add_argument("--symbol", default="BOVA11")
     b3_parser.add_argument("--raw-dir", type=Path, default=DEFAULT_B3_RAW_DIR)
     b3_parser.add_argument("--daily-output", type=Path, default=DEFAULT_B3_DAILY_PATH)
@@ -70,7 +74,7 @@ def main() -> None:
     tesouro_parser.add_argument("--summary-output", type=Path, default=DEFAULT_TESOURO_SUMMARY_PATH)
 
     cvm_parser = subparsers.add_parser("fetch-cvm-funds", help="Baixa e resume informe diario de fundos da CVM.")
-    cvm_parser.add_argument("--year-month", default="202606")
+    cvm_parser.add_argument("--year-month", default="202512")
     cvm_parser.add_argument("--raw-dir", type=Path, default=DEFAULT_CVM_RAW_DIR)
     cvm_parser.add_argument("--summary-output", type=Path, default=DEFAULT_CVM_SUMMARY_PATH)
 
@@ -86,6 +90,7 @@ def main() -> None:
     simulate_parser.add_argument("--profile-mode", default="heterogeneous")
     simulate_parser.add_argument("--history-output", type=Path, default=DEFAULT_HISTORY_PATH)
     simulate_parser.add_argument("--summary-output", type=Path, default=DEFAULT_SUMMARY_PATH)
+    add_calibration_arguments(simulate_parser)
 
     compare_parser = subparsers.add_parser("compare-scenarios", help="Compara niveis de imitacao.")
     compare_parser.add_argument("--macro", type=Path, default=DEFAULT_MACRO_PATH)
@@ -95,6 +100,7 @@ def main() -> None:
     compare_parser.add_argument("--seed", type=int, default=42)
     compare_parser.add_argument("--shock-scenario", default="none")
     compare_parser.add_argument("--output", type=Path, default=DEFAULT_COMPARISON_PATH)
+    add_calibration_arguments(compare_parser)
 
     shock_parser = subparsers.add_parser("compare-shocks", help="Compara cenarios de choque macro.")
     shock_parser.add_argument("--macro", type=Path, default=DEFAULT_MACRO_PATH)
@@ -104,6 +110,7 @@ def main() -> None:
     shock_parser.add_argument("--rebalance-cost", type=float, default=0.001)
     shock_parser.add_argument("--seed", type=int, default=42)
     shock_parser.add_argument("--output", type=Path, default=DEFAULT_SHOCK_COMPARISON_PATH)
+    add_calibration_arguments(shock_parser)
 
     rebalance_parser = subparsers.add_parser("compare-rebalance", help="Compara frequencia de rebalanceamento e ruido de sinal.")
     rebalance_parser.add_argument("--macro", type=Path, default=DEFAULT_MACRO_PATH)
@@ -112,6 +119,7 @@ def main() -> None:
     rebalance_parser.add_argument("--rebalance-cost", type=float, default=0.001)
     rebalance_parser.add_argument("--seed", type=int, default=42)
     rebalance_parser.add_argument("--output", type=Path, default=DEFAULT_REBALANCE_COMPARISON_PATH)
+    add_calibration_arguments(rebalance_parser)
 
     profile_parser = subparsers.add_parser("compare-profiles", help="Compara agentes heterogeneos e homogeneos.")
     profile_parser.add_argument("--macro", type=Path, default=DEFAULT_MACRO_PATH)
@@ -120,8 +128,9 @@ def main() -> None:
     profile_parser.add_argument("--rebalance-cost", type=float, default=0.001)
     profile_parser.add_argument("--seed", type=int, default=42)
     profile_parser.add_argument("--output", type=Path, default=DEFAULT_PROFILE_COMPARISON_PATH)
+    add_calibration_arguments(profile_parser)
 
-    report_parser = subparsers.add_parser("generate-report", help="Gera tabelas, graficos SVG e avaliacao inicial das hipoteses.")
+    report_parser = subparsers.add_parser("generate-report", help="Gera tabelas, graficos SVG e relatorios das hipoteses.")
     report_parser.add_argument("--baseline-summary", type=Path, default=DEFAULT_SUMMARY_PATH)
     report_parser.add_argument("--scenario-comparison", type=Path, default=DEFAULT_COMPARISON_PATH)
     report_parser.add_argument("--shock-comparison", type=Path, default=DEFAULT_SHOCK_COMPARISON_PATH)
@@ -129,6 +138,7 @@ def main() -> None:
     report_parser.add_argument("--profile-comparison", type=Path, default=DEFAULT_PROFILE_COMPARISON_PATH)
     report_parser.add_argument("--output-dir", type=Path, default=DEFAULT_REPORT_DIR)
     report_parser.add_argument("--hypothesis-output", type=Path, default=DEFAULT_HYPOTHESIS_PATH)
+    report_parser.add_argument("--final-report-output", type=Path, default=DEFAULT_FINAL_REPORT_PATH)
 
     calibration_parser = subparsers.add_parser("calibrate-parameters", help="Gera calibracao inicial a partir das bases observadas.")
     calibration_parser.add_argument("--macro", type=Path, default=DEFAULT_MACRO_PATH)
@@ -146,6 +156,7 @@ def main() -> None:
     run_parser.add_argument("--seed", type=int, default=42)
     run_parser.add_argument("--shock-scenario", default="none")
     run_parser.add_argument("--no-ibovespa", action="store_true", help="Nao tenta baixar a serie SGS 7.")
+    add_calibration_arguments(run_parser)
 
     args = parser.parse_args()
 
@@ -161,13 +172,23 @@ def main() -> None:
         return
 
     if args.command == "fetch-b3-equity":
-        records = build_b3_equity_dataset(
-            year=args.year,
-            symbol=args.symbol,
-            raw_dir=args.raw_dir,
-            daily_output=args.daily_output,
-            monthly_output=args.monthly_output,
-        )
+        if args.year is not None:
+            records = build_b3_equity_dataset(
+                year=args.year,
+                symbol=args.symbol,
+                raw_dir=args.raw_dir,
+                daily_output=args.daily_output,
+                monthly_output=args.monthly_output,
+            )
+        else:
+            records = build_b3_equity_dataset_range(
+                start_year=args.start_year,
+                end_year=args.end_year,
+                symbol=args.symbol,
+                raw_dir=args.raw_dir,
+                daily_output=args.daily_output,
+                monthly_output=args.monthly_output,
+            )
         print(f"Serie B3 mensal salva em {args.monthly_output} ({len(records)} meses).")
         if not args.no_enrich_macro:
             enriched = enrich_macro_with_equity(args.macro, args.monthly_output, args.enriched_macro_output)
@@ -186,6 +207,7 @@ def main() -> None:
 
     if args.command == "simulate":
         records = read_macro_csv(args.macro)
+        calibration_kwargs = load_calibration_kwargs(args)
         history, summary = run_baseline_simulation(
             records,
             agent_count=args.agents,
@@ -196,6 +218,7 @@ def main() -> None:
             rebalance_multiplier=args.rebalance_multiplier,
             signal_noise=args.signal_noise,
             profile_mode=args.profile_mode,
+            **calibration_kwargs,
         )
         write_history_csv(args.history_output, history)
         write_summary_json(args.summary_output, summary)
@@ -206,6 +229,7 @@ def main() -> None:
     if args.command == "compare-scenarios":
         records = read_macro_csv(args.macro)
         imitation_levels = parse_float_list(args.imitation_levels)
+        calibration_kwargs = load_calibration_kwargs(args)
         comparison = run_scenario_comparison(
             records,
             imitation_levels=imitation_levels,
@@ -213,6 +237,7 @@ def main() -> None:
             rebalance_cost=args.rebalance_cost,
             seed=args.seed,
             shock_scenario=args.shock_scenario,
+            **calibration_kwargs,
         )
         write_comparison_csv(args.output, comparison)
         print(f"Comparacao de cenarios salva em {args.output}.")
@@ -221,6 +246,7 @@ def main() -> None:
     if args.command == "compare-shocks":
         records = read_macro_csv(args.macro)
         shock_scenarios = parse_string_list(args.shock_scenarios)
+        calibration_kwargs = load_calibration_kwargs(args)
         comparison = run_shock_comparison(
             records,
             shock_scenarios=shock_scenarios,
@@ -228,6 +254,7 @@ def main() -> None:
             imitation_multiplier=args.imitation,
             rebalance_cost=args.rebalance_cost,
             seed=args.seed,
+            **calibration_kwargs,
         )
         write_comparison_csv(args.output, comparison)
         print(f"Comparacao de choques salva em {args.output}.")
@@ -235,12 +262,14 @@ def main() -> None:
 
     if args.command == "compare-rebalance":
         records = read_macro_csv(args.macro)
+        calibration_kwargs = load_calibration_kwargs(args)
         comparison = run_rebalance_comparison(
             records,
             agent_count=args.agents,
             imitation_multiplier=args.imitation,
             rebalance_cost=args.rebalance_cost,
             seed=args.seed,
+            **calibration_kwargs,
         )
         write_comparison_csv(args.output, comparison)
         print(f"Comparacao de rebalanceamento salva em {args.output}.")
@@ -248,12 +277,14 @@ def main() -> None:
 
     if args.command == "compare-profiles":
         records = read_macro_csv(args.macro)
+        calibration_kwargs = load_calibration_kwargs(args)
         comparison = run_profile_comparison(
             records,
             agent_count=args.agents,
             imitation_multiplier=args.imitation,
             rebalance_cost=args.rebalance_cost,
             seed=args.seed,
+            **calibration_kwargs,
         )
         write_comparison_csv(args.output, comparison)
         print(f"Comparacao de perfis salva em {args.output}.")
@@ -268,9 +299,11 @@ def main() -> None:
             profile_comparison_path=args.profile_comparison,
             output_dir=args.output_dir,
             docs_output_path=args.hypothesis_output,
+            final_report_path=args.final_report_output,
         )
         print(f"Relatorio gerado em {args.output_dir}.")
         print(f"Avaliacao das hipoteses salva em {args.hypothesis_output}.")
+        print(f"Relatorio final salvo em {args.final_report_output}.")
         return
 
     if args.command == "calibrate-parameters":
@@ -293,6 +326,7 @@ def main() -> None:
             DEFAULT_MACRO_PATH,
             include_ibovespa=not args.no_ibovespa,
         )
+        calibration_kwargs = load_calibration_kwargs(args)
         history, summary = run_baseline_simulation(
             records,
             agent_count=args.agents,
@@ -300,6 +334,7 @@ def main() -> None:
             rebalance_cost=args.rebalance_cost,
             seed=args.seed,
             shock_scenario=args.shock_scenario,
+            **calibration_kwargs,
         )
         write_history_csv(DEFAULT_HISTORY_PATH, history)
         write_summary_json(DEFAULT_SUMMARY_PATH, summary)
@@ -324,6 +359,32 @@ def parse_string_list(value: str) -> list[str]:
     if not values:
         raise ValueError("A lista de valores nao pode ser vazia.")
     return values
+
+
+def add_calibration_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--calibration",
+        type=Path,
+        default=DEFAULT_CALIBRATION_PATH,
+        help="JSON de calibracao. Aplicado automaticamente quando existir.",
+    )
+    parser.add_argument("--no-calibration", action="store_true", help="Forca uso dos parametros padrao do simulador.")
+
+
+def load_calibration_kwargs(args: argparse.Namespace) -> dict[str, object]:
+    if args.no_calibration or not args.calibration.exists():
+        return {
+            "asset_risk": None,
+            "crowding_penalty": DEFAULT_CROWDING_PENALTY,
+            "calibration_source": "default",
+        }
+
+    calibration = load_simulation_calibration(args.calibration)
+    return {
+        "asset_risk": calibration["asset_risk"],
+        "crowding_penalty": calibration["crowding_penalty"],
+        "calibration_source": calibration["source"],
+    }
 
 
 if __name__ == "__main__":

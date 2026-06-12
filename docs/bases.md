@@ -14,8 +14,8 @@ O projeto foi redirecionado para decisao financeira. Para a primeira versao, a m
 | Vendas do Tesouro Direto | Tesouro Transparente | O portal informava ultima atualizacao em 12/06/2026 e descreve volume diario de vendas por tipo de titulo e vencimento. | Proxy de preferencia revelada por classe de titulo. | https://www.tesourotransparente.gov.br/temas/divida-publica-federal/estatisticas-e-relatorios-da-divida-publica-federal |
 | Resgates do Tesouro Direto | Tesouro Transparente | O portal informava ultima atualizacao em 12/06/2026 e separa resgates por recompra, vencimento e cupom. | Analise de saida, liquidez e rotatividade. | https://www.tesourotransparente.gov.br/temas/divida-publica-federal/estatisticas-e-relatorios-da-divida-publica-federal |
 | Investidores do Tesouro Direto | Tesouro Transparente | O portal informava ultima atualizacao em 10/06/2026 e oferece base detalhada de investidores cadastrados. | Perfil, segmentacao e calibracao de agentes sinteticos. | https://www.tesourotransparente.gov.br/temas/divida-publica-federal/estatisticas-e-relatorios-da-divida-publica-federal |
-| Fundos de Investimento | CVM | O diretorio publico retornou `inf_diario_fi_202606.zip`; o informe diario contem patrimonio, captacoes, resgates e cotistas. | Fluxos, patrimonio, cotistas e categorias de fundos. | https://dados.cvm.gov.br/dados/FI/DOC/INF_DIARIO/DADOS/ |
-| Cotacoes historicas | B3 | O endpoint COTAHIST anual de 2024 retornou HTTP 200 e foi processado para `BOVA11`. | Proxy real de renda variavel agregada no baseline. | https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A2024.ZIP |
+| Fundos de Investimento | CVM | O diretorio publico retornou `inf_diario_fi_202512.zip`; o informe diario contem patrimonio, captacoes, resgates e cotistas. | Fluxos, patrimonio, cotistas e categorias de fundos. | https://dados.cvm.gov.br/dados/FI/DOC/INF_DIARIO/DADOS/ |
+| Cotacoes historicas | B3 | Os endpoints COTAHIST anuais de 2020 a 2025 foram processados para `BOVA11`. | Proxy real de renda variavel agregada no baseline 2020-2025. | https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A2025.ZIP |
 
 ## O que cada base agrega
 
@@ -45,7 +45,7 @@ O projeto foi redirecionado para decisao financeira. Para a primeira versao, a m
 - Fonte oficial para mercado a vista.
 - Deve ser usada com cuidado porque as cotacoes historicas nao estao ajustadas por proventos nem inflacao.
 - Para a fase 1, o ideal e construir uma serie agregada por indice, ETF ou cesta simples.
-- Integrada no projeto por `fetch-b3-equity`, usando `BOVA11` como proxy operacional de renda variavel.
+- Integrada no projeto por `fetch-b3-equity --start-year 2020 --end-year 2025`, usando `BOVA11` como proxy operacional de renda variavel.
 
 ## Ordem recomendada de ingestao
 

@@ -23,6 +23,9 @@ class EquityObservation:
 def download_cotahist_year(year: int, raw_dir: Path) -> Path:
     raw_dir.mkdir(parents=True, exist_ok=True)
     output_path = raw_dir / f"COTAHIST_A{year}.ZIP"
+    if output_path.exists() and output_path.stat().st_size > 0:
+        return output_path
+
     url = B3_COTAHIST_URL.format(year=year)
     request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
 
@@ -157,11 +160,36 @@ def build_b3_equity_dataset(
     daily_output: Path,
     monthly_output: Path,
 ) -> list[dict[str, float | str]]:
-    zip_path = download_cotahist_year(year, raw_dir)
-    observations = parse_cotahist_symbol(zip_path, symbol)
-    if not observations:
-        raise ValueError(f"Nenhuma observacao encontrada para {symbol} em {zip_path}.")
+    return build_b3_equity_dataset_range(
+        start_year=year,
+        end_year=year,
+        symbol=symbol,
+        raw_dir=raw_dir,
+        daily_output=daily_output,
+        monthly_output=monthly_output,
+    )
 
+
+def build_b3_equity_dataset_range(
+    start_year: int,
+    end_year: int,
+    symbol: str,
+    raw_dir: Path,
+    daily_output: Path,
+    monthly_output: Path,
+) -> list[dict[str, float | str]]:
+    if start_year > end_year:
+        raise ValueError("start_year nao pode ser maior que end_year.")
+
+    observations: list[EquityObservation] = []
+    for year in range(start_year, end_year + 1):
+        zip_path = download_cotahist_year(year, raw_dir)
+        observations.extend(parse_cotahist_symbol(zip_path, symbol))
+
+    if not observations:
+        raise ValueError(f"Nenhuma observacao encontrada para {symbol} entre {start_year} e {end_year}.")
+
+    observations = sorted(observations, key=lambda item: item.date)
     write_equity_daily_csv(daily_output, observations)
     monthly_records = build_monthly_equity_returns(observations)
     write_monthly_equity_csv(monthly_output, monthly_records)
