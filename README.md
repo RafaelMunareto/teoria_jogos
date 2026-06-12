@@ -2,9 +2,23 @@
 
 ## Estado Atual
 
-O repositorio ainda nao possui implementacao. O projeto foi redirecionado para um problema de **decisao financeira**, com um recorte inicial recomendado:
+O projeto possui um baseline inicial implementado em Python, sem dependencias externas. O recorte atual e um problema de **decisao financeira**:
 
 **simular a alocacao de portfolio de investidores brasileiros entre renda fixa, fundos e renda variavel sob choques de juros, inflacao e comportamento de manada.**
+
+### Implementacao atual - 2026-06-12
+
+Foi incluida a primeira versao executavel do projeto:
+
+- pacote Python em `src/teoria_jogos`;
+- CLI com comandos para baixar dados do BCB e rodar simulacao;
+- ingestao das series SGS/BCB de Selic, IPCA e dolar;
+- consolidacao mensal em `data/processed/macro_bcb.csv`;
+- simulacao multiagente baseline com investidores conservadores, moderados e agressivos;
+- metricas de retorno medio, turnover, concentracao HHI, drawdown e pesos finais;
+- testes unitarios em `tests/`.
+
+Os arquivos em `data/` e `outputs/` sao gerados localmente e nao sao versionados, conforme `.gitignore`.
 
 ## Aviso de Escopo
 
@@ -67,6 +81,16 @@ Em mercados financeiros, a decisao de cada investidor nao depende apenas de fund
 - Tesouro IPCA+;
 - fundos de renda fixa ou DI;
 - renda variavel agregada, por exemplo indice ou ETF.
+
+### Ativos do baseline implementado
+
+- `cash`;
+- `tesouro_selic`;
+- `tesouro_ipca`;
+- `fundos_rf`;
+- `renda_variavel`.
+
+A renda variavel ainda e uma serie sintetica gerada a partir do painel macro e de um choque estocastico controlado por `seed`. A integracao com B3 fica para a proxima etapa.
 
 ### Estrutura de jogo recomendada
 
@@ -143,31 +167,88 @@ As referencias iniciais foram organizadas em [docs/referencias.md](/Users/munare
 - cenarios de simulacao;
 - metricas de risco, retorno e estabilidade.
 
+## Como Rodar
+
+### Validar testes
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests
+```
+
+### Baixar dados macro do BCB
+
+```bash
+PYTHONPATH=src python3 -m teoria_jogos.cli fetch-bcb --start 01/01/2024 --end 31/12/2024
+```
+
+Saidas geradas:
+
+- `data/raw/bcb/bcb_sgs_selic.csv`;
+- `data/raw/bcb/bcb_sgs_ipca.csv`;
+- `data/raw/bcb/bcb_sgs_usd_brl.csv`;
+- `data/processed/macro_bcb.csv`.
+
+### Rodar simulacao com o CSV macro existente
+
+```bash
+PYTHONPATH=src python3 -m teoria_jogos.cli simulate --agents 90 --imitation 1.0 --seed 42
+```
+
+Saidas geradas:
+
+- `outputs/baseline_history.csv`;
+- `outputs/baseline_summary.json`.
+
+### Rodar pipeline completo
+
+```bash
+PYTHONPATH=src python3 -m teoria_jogos.cli run-baseline --start 01/01/2024 --end 31/12/2024 --agents 90 --imitation 1.0 --seed 42
+```
+
+## Resultado do Baseline Executado
+
+Execucao local realizada com dados BCB de 2024, `90` agentes, `imitation=1.0` e `seed=42`.
+
+| Metrica | Valor |
+| --- | --- |
+| Periodos | 12 |
+| Retorno acumulado medio | 10.08% |
+| Retorno medio mensal | 0.80% |
+| Volatilidade mensal do retorno medio | 0.15% |
+| Max drawdown | 0.00% |
+| Concentracao HHI final | 0.9731 |
+| Peso final em Tesouro Selic | 98.64% |
+
+Leitura tecnica: o baseline esta concentrando demais em `tesouro_selic`, o que e coerente com a formulacao atual, mas tambem indica que a funcao de utilidade ainda precisa ser refinada para gerar maior competicao entre ativos.
+
 ## Estrutura Recomendada do Repositorio
 
 ```text
 teoria_jogos/
-├── README.md
-├── docs/
-│   ├── bases.md
-│   └── referencias.md
-├── data/
-│   ├── raw/
-│   ├── interim/
-│   └── processed/
-├── notebooks/
-├── outputs/
-└── src/
-    ├── analysis/
-    ├── data/
-    ├── models/
-    └── simulation/
+|-- README.md
+|-- pyproject.toml
+|-- docs/
+|   |-- bases.md
+|   `-- referencias.md
+|-- data/
+|   |-- raw/
+|   |-- interim/
+|   `-- processed/
+|-- notebooks/
+|-- outputs/
+|-- src/
+|   `-- teoria_jogos/
+|       |-- analysis/
+|       |-- data/
+|       |-- models/
+|       `-- simulation/
+`-- tests/
 ```
 
 ## Proximas Etapas
 
-1. Definir exatamente quais classes de ativos entrarao no baseline.
-2. Baixar as primeiras bases oficiais e inspecionar esquema e granularidade.
-3. Implementar agentes sinteticos e funcoes de utilidade simplificadas.
-4. Rodar um baseline sem manada e outro com imitacao.
-5. Medir impacto de choques de juros sobre a alocacao agregada.
+1. Refinar a funcao de utilidade para reduzir concentracao excessiva em Tesouro Selic.
+2. Rodar comparacao sistematica entre `imitation=0.0`, `imitation=1.0` e `imitation=2.0`.
+3. Integrar serie real de renda variavel pela B3 ou por proxy aberta adequada.
+4. Adicionar cenarios de choque de juros e inflacao.
+5. Incluir ingestao inicial de Tesouro Transparente e CVM Fundos.

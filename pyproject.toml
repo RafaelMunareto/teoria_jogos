@@ -1,0 +1,17 @@
+[project]
+name = "teoria-jogos-financeiro"
+version = "0.1.0"
+description = "Simulacao multiagente para decisao financeira baseada em teoria dos jogos."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+teoria-jogos = "teoria_jogos.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
