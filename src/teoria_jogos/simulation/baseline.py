@@ -86,6 +86,9 @@ def run_baseline_simulation(
     rebalance_cost: float = 0.001,
     seed: int = 42,
     shock_scenario: str = "none",
+    rebalance_multiplier: float = 1.0,
+    signal_noise: float = 0.0,
+    profile_mode: str = "heterogeneous",
 ) -> tuple[list[dict[str, float | str]], dict[str, float | str]]:
     if not macro_records:
         raise ValueError("macro_records nao pode ser vazio")
@@ -95,7 +98,7 @@ def run_baseline_simulation(
     rng = random.Random(seed)
     macro_records = apply_shock_scenario(macro_records, shock_scenario)
     asset_returns = build_asset_returns(macro_records, rng)
-    agents = create_agents(agent_count, rng)
+    agents = create_agents(agent_count, rng, profile_mode=profile_mode)
     market_weights = average_weights(agent.weights for agent in agents)
 
     history: list[dict[str, float | str]] = []
@@ -117,8 +120,11 @@ def run_baseline_simulation(
                 asset_returns=returns_by_asset,
                 market_weights=market_weights,
                 imitation_multiplier=imitation_multiplier,
+                rng=rng,
+                signal_noise=signal_noise,
             )
-            agent.weights = blend_weights(previous_weights, target_weights, agent.profile.rebalance_speed)
+            rebalance_speed = max(0.0, min(1.0, agent.profile.rebalance_speed * rebalance_multiplier))
+            agent.weights = blend_weights(previous_weights, target_weights, rebalance_speed)
             turnover = portfolio_turnover(previous_weights, agent.weights)
             net_return = gross_return - (turnover * rebalance_cost)
             agent.wealth *= max(0.0, 1 + net_return)
@@ -145,7 +151,18 @@ def run_baseline_simulation(
             }
         )
 
-    summary = summarize(history, agent_count, imitation_multiplier, rebalance_cost, seed, max_drawdown, shock_scenario)
+    summary = summarize(
+        history,
+        agent_count,
+        imitation_multiplier,
+        rebalance_cost,
+        seed,
+        max_drawdown,
+        shock_scenario,
+        rebalance_multiplier,
+        signal_noise,
+        profile_mode,
+    )
     return history, summary
 
 
@@ -197,6 +214,66 @@ def run_shock_comparison(
     return comparison
 
 
+def run_rebalance_comparison(
+    macro_records: list[dict[str, float | str]],
+    agent_count: int = 300,
+    imitation_multiplier: float = 1.0,
+    rebalance_cost: float = 0.001,
+    seed: int = 42,
+) -> list[dict[str, float | str]]:
+    scenarios = [
+        ("slow_clean", 0.5, 0.0),
+        ("base_clean", 1.0, 0.0),
+        ("fast_clean", 1.5, 0.0),
+        ("fast_noisy", 1.5, 0.010),
+        ("very_fast_noisy", 2.0, 0.020),
+    ]
+    comparison = []
+
+    for scenario_name, rebalance_multiplier, signal_noise in scenarios:
+        _, summary = run_baseline_simulation(
+            macro_records,
+            agent_count=agent_count,
+            imitation_multiplier=imitation_multiplier,
+            rebalance_cost=rebalance_cost,
+            seed=seed,
+            rebalance_multiplier=rebalance_multiplier,
+            signal_noise=signal_noise,
+        )
+        comparison.append({"scenario": scenario_name, **summary})
+
+    return comparison
+
+
+def run_profile_comparison(
+    macro_records: list[dict[str, float | str]],
+    agent_count: int = 300,
+    imitation_multiplier: float = 1.0,
+    rebalance_cost: float = 0.001,
+    seed: int = 42,
+) -> list[dict[str, float | str]]:
+    profile_modes = [
+        "heterogeneous",
+        "homogeneous_conservador",
+        "homogeneous_moderado",
+        "homogeneous_agressivo",
+    ]
+    comparison = []
+
+    for profile_mode in profile_modes:
+        _, summary = run_baseline_simulation(
+            macro_records,
+            agent_count=agent_count,
+            imitation_multiplier=imitation_multiplier,
+            rebalance_cost=rebalance_cost,
+            seed=seed,
+            profile_mode=profile_mode,
+        )
+        comparison.append({"scenario": profile_mode, **summary})
+
+    return comparison
+
+
 def build_asset_returns(
     macro_records: list[dict[str, float | str]],
     rng: random.Random,
@@ -227,15 +304,26 @@ def build_asset_returns(
     return asset_records
 
 
-def create_agents(agent_count: int, rng: random.Random) -> list[InvestorAgent]:
+def create_agents(agent_count: int, rng: random.Random, profile_mode: str = "heterogeneous") -> list[InvestorAgent]:
     agents: list[InvestorAgent] = []
 
     for index in range(agent_count):
-        profile = DEFAULT_PROFILES[index % len(DEFAULT_PROFILES)]
+        profile = select_profile(index, profile_mode)
         weights = jitter_weights(profile.base_weights, rng)
         agents.append(InvestorAgent(profile=profile, weights=weights))
 
     return agents
+
+
+def select_profile(index: int, profile_mode: str) -> AgentProfile:
+    if profile_mode == "heterogeneous":
+        return DEFAULT_PROFILES[index % len(DEFAULT_PROFILES)]
+    if profile_mode.startswith("homogeneous_"):
+        profile_name = profile_mode.removeprefix("homogeneous_")
+        for profile in DEFAULT_PROFILES:
+            if profile.name == profile_name:
+                return profile
+    raise ValueError(f"Modo de perfil invalido: {profile_mode}")
 
 
 def choose_target_weights(
@@ -243,6 +331,8 @@ def choose_target_weights(
     asset_returns: dict[str, float],
     market_weights: dict[str, float],
     imitation_multiplier: float,
+    rng: random.Random,
+    signal_noise: float,
 ) -> dict[str, float]:
     scores = {}
     market_stress = max(0.0, -asset_returns["renda_variavel"])
@@ -250,7 +340,7 @@ def choose_target_weights(
     imitation_strength = profile.imitation_bias * imitation_multiplier * stress_multiplier
 
     for asset in ASSETS:
-        expected_return = asset_returns[asset]
+        expected_return = asset_returns[asset] + rng.gauss(0.0, signal_noise)
         risk_penalty = profile.risk_aversion * ASSET_RISK[asset] * 0.004
         base_anchor = profile.base_weights[asset] * 0.018
         imitation_anchor = (market_weights[asset] - profile.base_weights[asset]) * imitation_strength * 0.025
@@ -297,6 +387,9 @@ def summarize(
     seed: int,
     max_drawdown: float,
     shock_scenario: str,
+    rebalance_multiplier: float,
+    signal_noise: float,
+    profile_mode: str,
 ) -> dict[str, float | str]:
     final = history[-1]
     returns = [float(row["avg_agent_return"]) for row in history]
@@ -308,6 +401,9 @@ def summarize(
         "rebalance_cost": rebalance_cost,
         "seed": seed,
         "shock_scenario": shock_scenario,
+        "rebalance_multiplier": rebalance_multiplier,
+        "signal_noise": signal_noise,
+        "profile_mode": profile_mode,
         "final_total_wealth": float(final["total_wealth"]),
         "cumulative_return": (float(final["total_wealth"]) / agent_count) - 1,
         "avg_monthly_return": mean(returns),

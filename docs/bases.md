@@ -10,12 +10,12 @@ O projeto foi redirecionado para decisao financeira. Para a primeira versao, a m
 | Selic - interface BCData | Banco Central do Brasil | A interface de consulta JSON do BCData/SGS informa o formato padrao da API para series. | Pipeline automatizada de juros. | https://dadosabertos.bcb.gov.br/dataset/11-taxa-de-juros---selic/resource/b73edc07-bbac-430c-a2cb-b1639e605fa8 |
 | Dolar comercial diario | Banco Central do Brasil | O portal oferece cotacao diaria com formatos API, JSON e OData. | Variavel macro complementar para regime de mercado. | https://dadosabertos.bcb.gov.br/dataset/dolar-americano-usd-todos-os-boletins-diarios |
 | IBOVESPA - SGS 7 | Banco Central do Brasil | A API retornou valores historicos para 2019, mas nao retornou observacoes para 2024 na consulta local. | Proxy historica opcional para renda variavel quando disponivel. | https://api.bcb.gov.br/dados/serie/bcdata.sgs.7/dados?formato=json |
-| Taxas dos Titulos Ofertados pelo Tesouro Direto | Tesouro Transparente | O portal informava ultima atualizacao em 12/06/2026 e disponibiliza CSV diario com precos e taxas. | Retorno e atratividade relativa da renda fixa publica. | https://www.tesourotransparente.gov.br/temas/divida-publica-federal/estatisticas-e-relatorios-da-divida-publica-federal |
+| Taxas dos Titulos Ofertados pelo Tesouro Direto | Tesouro Transparente | O CKAN retornou recurso CSV `precotaxatesourodireto.csv`, modificado em 12/06/2026. | Retorno e atratividade relativa da renda fixa publica. | https://www.tesourotransparente.gov.br/ckan/dataset |
 | Vendas do Tesouro Direto | Tesouro Transparente | O portal informava ultima atualizacao em 12/06/2026 e descreve volume diario de vendas por tipo de titulo e vencimento. | Proxy de preferencia revelada por classe de titulo. | https://www.tesourotransparente.gov.br/temas/divida-publica-federal/estatisticas-e-relatorios-da-divida-publica-federal |
 | Resgates do Tesouro Direto | Tesouro Transparente | O portal informava ultima atualizacao em 12/06/2026 e separa resgates por recompra, vencimento e cupom. | Analise de saida, liquidez e rotatividade. | https://www.tesourotransparente.gov.br/temas/divida-publica-federal/estatisticas-e-relatorios-da-divida-publica-federal |
 | Investidores do Tesouro Direto | Tesouro Transparente | O portal informava ultima atualizacao em 10/06/2026 e oferece base detalhada de investidores cadastrados. | Perfil, segmentacao e calibracao de agentes sinteticos. | https://www.tesourotransparente.gov.br/temas/divida-publica-federal/estatisticas-e-relatorios-da-divida-publica-federal |
-| Fundos de Investimento | CVM | O portal lista informe diario, extrato de informacoes e base cadastral dos fundos. | Fluxos, patrimonio, cotistas e categorias de fundos. | https://dados.cvm.gov.br/group/fundos-de-investimento |
-| Cotacoes historicas | B3 | A B3 informa historico de cotacoes desde 1986 e detalha precos, volume e negocios; os dados nao sao ajustados por inflacao ou proventos. | Serie historica de mercado para renda variavel agregada. | https://www.b3.com.br/pt_br/market-data-e-indices/servicos-de-dados/market-data/historico/mercado-a-vista/cotacoes-historicas/ |
+| Fundos de Investimento | CVM | O diretorio publico retornou `inf_diario_fi_202606.zip`; o informe diario contem patrimonio, captacoes, resgates e cotistas. | Fluxos, patrimonio, cotistas e categorias de fundos. | https://dados.cvm.gov.br/dados/FI/DOC/INF_DIARIO/DADOS/ |
+| Cotacoes historicas | B3 | O endpoint COTAHIST anual de 2024 retornou HTTP 200 e foi processado para `BOVA11`. | Proxy real de renda variavel agregada no baseline. | https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A2024.ZIP |
 
 ## O que cada base agrega
 
@@ -31,19 +31,21 @@ O projeto foi redirecionado para decisao financeira. Para a primeira versao, a m
 - Melhor fonte oficial para renda fixa publica da pessoa fisica.
 - Permite observar atratividade dos titulos e, em alguma medida, comportamento agregado do investidor no Tesouro Direto.
 - Muito util para calibrar agentes conservadores e moderados.
+- Integrado no projeto por `fetch-tesouro`, gerando `data/processed/tesouro_rates_summary.csv`.
 
 ### 3. CVM
 
 - Melhor base oficial para fundos de investimento.
 - O informe diario e valioso para patrimonio, cota e numero de cotistas.
 - Ajuda a representar a classe "fundos" sem depender de bases privadas.
+- Integrado no projeto por `fetch-cvm-funds`, gerando `data/processed/cvm_funds_summary.csv`.
 
 ### 4. B3
 
 - Fonte oficial para mercado a vista.
 - Deve ser usada com cuidado porque as cotacoes historicas nao estao ajustadas por proventos nem inflacao.
 - Para a fase 1, o ideal e construir uma serie agregada por indice, ETF ou cesta simples.
-- Continua sendo a fonte preferencial para uma serie atualizada de renda variavel, ja que a proxy SGS 7 nao cobriu 2024.
+- Integrada no projeto por `fetch-b3-equity`, usando `BOVA11` como proxy operacional de renda variavel.
 
 ## Ordem recomendada de ingestao
 

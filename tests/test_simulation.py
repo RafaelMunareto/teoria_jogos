@@ -7,6 +7,8 @@ from teoria_jogos.simulation.baseline import (
     ASSETS,
     build_asset_returns,
     run_baseline_simulation,
+    run_profile_comparison,
+    run_rebalance_comparison,
     run_scenario_comparison,
     run_shock_comparison,
 )
@@ -121,6 +123,33 @@ class BaselineSimulationTest(unittest.TestCase):
 
         self.assertEqual([row["scenario"] for row in comparison], ["none", "rate_hike", "combined_stress"])
         self.assertEqual(comparison[2]["shock_scenario"], "combined_stress")
+
+    def test_rebalance_and_profile_comparisons_run(self) -> None:
+        macro = [
+            {
+                "month": "2024-01-01",
+                "selic_return": 0.008,
+                "ipca_rate": 0.004,
+                "usd_brl": 5.0,
+                "usd_return": 0.0,
+                "equity_return": 0.03,
+            },
+            {
+                "month": "2024-02-01",
+                "selic_return": 0.007,
+                "ipca_rate": 0.003,
+                "usd_brl": 5.1,
+                "usd_return": 0.02,
+                "equity_return": -0.02,
+            },
+        ]
+
+        rebalances = run_rebalance_comparison(macro, agent_count=9, seed=7)
+        profiles = run_profile_comparison(macro, agent_count=9, seed=7)
+
+        self.assertEqual(rebalances[0]["scenario"], "slow_clean")
+        self.assertEqual(profiles[0]["scenario"], "heterogeneous")
+        self.assertEqual(profiles[1]["profile_mode"], "homogeneous_conservador")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ O projeto possui um baseline inicial implementado em Python, sem dependencias ex
 
 ### Status do Projeto
 
-O projeto **ainda nao esta concluido**. A fase atual e de baseline/prototipo: ja existe uma pipeline executavel com comparacao de cenarios, mas ainda faltam calibracao empirica, integracao de mais bases oficiais, graficos finais e avaliacao conclusiva das hipoteses.
+O projeto **ainda nao esta concluido como estudo final**, mas ja possui uma versao inicial completa de pipeline: coleta dados, enriquece renda variavel com B3, roda simulacoes, compara cenarios, gera graficos, calibra parametros iniciais e escreve uma avaliacao automatica das hipoteses.
 
 ### Implementacao atual - 2026-06-12
 
@@ -18,8 +18,15 @@ Foi incluida a primeira versao executavel do projeto:
 - CLI com comandos para baixar dados do BCB e rodar simulacao;
 - comando `compare-scenarios` para comparar niveis de comportamento imitativo;
 - comando `compare-shocks` para comparar cenarios macro de estresse;
+- comando `compare-rebalance` para testar frequencia de rebalanceamento e ruido de sinal;
+- comando `compare-profiles` para testar agentes heterogeneos vs homogeneos;
+- comando `calibrate-parameters` para calibracao inicial com dados observados;
+- comando `generate-report` para gerar tabelas, graficos SVG e avaliacao das hipoteses;
 - ingestao das series SGS/BCB de Selic, IPCA e dolar;
 - tentativa opcional de ingestao do IBOVESPA pela serie SGS 7;
+- ingestao B3/COTAHIST com `BOVA11` como proxy real de renda variavel;
+- ingestao inicial do Tesouro Transparente;
+- ingestao inicial do informe diario de fundos da CVM;
 - consolidacao mensal em `data/processed/macro_bcb.csv`;
 - simulacao multiagente baseline com investidores conservadores, moderados e agressivos;
 - metricas de retorno medio, turnover, concentracao HHI, drawdown e pesos finais;
@@ -44,7 +51,20 @@ Foram adicionadas duas melhorias:
 - a renda variavel agora usa `equity_return` real quando a coluna existe no painel macro;
 - foram incluidos cenarios de choque: `rate_hike`, `inflation_spike`, `equity_stress` e `combined_stress`.
 
-A serie SGS 7 do BCB retornou dados historicos de IBOVESPA ate 30/09/2019 na consulta local. Para 2024, a API nao retornou observacoes, entao o pipeline marcou `equity_return_source=synthetic_fallback` e manteve a renda variavel sintetica no baseline atual.
+A serie SGS 7 do BCB retornou dados historicos de IBOVESPA ate 30/09/2019 na consulta local. Para 2024, a API nao retornou observacoes; essa lacuna foi posteriormente coberta pelo COTAHIST da B3 com `BOVA11`.
+
+### Melhoria implementada - 2026-06-12, rodada 3
+
+Foram adicionadas as etapas que estavam em aberto:
+
+- renda variavel real via B3/COTAHIST usando `BOVA11` como proxy operacional;
+- resumo de taxas do Tesouro Direto via Tesouro Transparente;
+- resumo de patrimonio, fluxos e cotistas de fundos via CVM;
+- graficos SVG em `outputs/report/`;
+- tabela final consolidada em `outputs/report/final_metrics.csv`;
+- calibracao inicial em `data/processed/calibration_params.json`;
+- avaliacao automatica das hipoteses em `docs/avaliacao_hipoteses.md`;
+- experimentos H3 e H4 com rebalanceamento/ruido e perfis homogeneos/heterogeneos.
 
 Os arquivos em `data/` e `outputs/` sao gerados localmente e nao sao versionados, conforme `.gitignore`.
 
@@ -121,9 +141,10 @@ Em mercados financeiros, a decisao de cada investidor nao depende apenas de fund
 A renda variavel pode vir de duas fontes:
 
 - `ibovespa_sgs_7`, quando a serie historica do SGS/BCB esta disponivel para o periodo;
+- `b3_cotahist_bova11`, quando o COTAHIST da B3 foi processado;
 - `synthetic_fallback`, quando nao ha dado real no periodo solicitado.
 
-No baseline de 2024, a renda variavel ainda usa `synthetic_fallback`. A integracao com B3 ou outra proxy aberta atualizada continua como etapa futura.
+No baseline atual de 2024, a renda variavel usa `b3_cotahist_bova11`.
 
 ### Estrutura de jogo recomendada
 
@@ -222,6 +243,41 @@ Saidas geradas:
 - `data/raw/bcb/bcb_sgs_ibovespa.csv`, quando disponivel;
 - `data/processed/macro_bcb.csv`.
 
+### Integrar renda variavel real via B3/COTAHIST
+
+```bash
+PYTHONPATH=src python3 -m teoria_jogos.cli fetch-b3-equity --year 2024 --symbol BOVA11
+```
+
+Saidas geradas:
+
+- `data/raw/b3/COTAHIST_A2024.ZIP`;
+- `data/processed/equity_b3_daily.csv`;
+- `data/processed/equity_b3_monthly.csv`;
+- `data/processed/macro_bcb.csv`, enriquecido com `equity_return`.
+
+### Ingerir Tesouro Transparente
+
+```bash
+PYTHONPATH=src python3 -m teoria_jogos.cli fetch-tesouro
+```
+
+Saidas geradas:
+
+- `data/raw/tesouro/precotaxatesourodireto.csv`;
+- `data/processed/tesouro_rates_summary.csv`.
+
+### Ingerir CVM Fundos
+
+```bash
+PYTHONPATH=src python3 -m teoria_jogos.cli fetch-cvm-funds --year-month 202606
+```
+
+Saidas geradas:
+
+- `data/raw/cvm/inf_diario_fi_202606.zip`;
+- `data/processed/cvm_funds_summary.csv`.
+
 ### Rodar simulacao com o CSV macro existente
 
 ```bash
@@ -253,6 +309,49 @@ Saida gerada:
 
 - `outputs/shock_comparison.csv`.
 
+### Comparar rebalanceamento e ruido
+
+```bash
+PYTHONPATH=src python3 -m teoria_jogos.cli compare-rebalance --agents 90 --imitation 1.0 --seed 42
+```
+
+Saida gerada:
+
+- `outputs/rebalance_comparison.csv`.
+
+### Comparar perfis de agentes
+
+```bash
+PYTHONPATH=src python3 -m teoria_jogos.cli compare-profiles --agents 90 --imitation 1.0 --seed 42
+```
+
+Saida gerada:
+
+- `outputs/profile_comparison.csv`.
+
+### Calibrar parametros iniciais
+
+```bash
+PYTHONPATH=src python3 -m teoria_jogos.cli calibrate-parameters
+```
+
+Saida gerada:
+
+- `data/processed/calibration_params.json`.
+
+### Gerar relatorio e avaliacao das hipoteses
+
+```bash
+PYTHONPATH=src python3 -m teoria_jogos.cli generate-report
+```
+
+Saidas geradas:
+
+- `outputs/report/final_metrics.csv`;
+- `outputs/report/shock_returns.svg`;
+- `outputs/report/shock_equity_weights.svg`;
+- `docs/avaliacao_hipoteses.md`.
+
 ### Rodar pipeline completo
 
 ```bash
@@ -261,49 +360,100 @@ PYTHONPATH=src python3 -m teoria_jogos.cli run-baseline --start 01/01/2024 --end
 
 ## Resultado do Baseline Executado
 
-Execucao local realizada com dados BCB de 2024, `90` agentes, `imitation=1.0` e `seed=42`.
+Execucao local realizada com dados BCB de 2024, B3/COTAHIST `BOVA11`, `90` agentes, `imitation=1.0` e `seed=42`.
 
 | Metrica | Valor |
 | --- | --- |
 | Periodos | 12 |
-| Retorno acumulado medio | 9.25% |
-| Retorno medio mensal | 0.74% |
-| Volatilidade mensal do retorno medio | 0.45% |
-| Max drawdown | -0.18% |
-| Concentracao HHI final | 0.2023 |
-| Peso final em caixa | 17.43% |
-| Peso final em Tesouro Selic | 20.68% |
-| Peso final em Tesouro IPCA+ | 19.22% |
-| Peso final em fundos RF | 18.86% |
-| Peso final em renda variavel | 23.80% |
+| Retorno acumulado medio | 6.19% |
+| Retorno medio mensal | 0.50% |
+| Volatilidade mensal do retorno medio | 0.56% |
+| Max drawdown | -0.29% |
+| Concentracao HHI final | 0.2085 |
+| Peso final em caixa | 21.03% |
+| Peso final em Tesouro Selic | 24.68% |
+| Peso final em Tesouro IPCA+ | 21.24% |
+| Peso final em fundos RF | 20.81% |
+| Peso final em renda variavel | 12.24% |
 
-Leitura tecnica: a nova regra reduziu a concentracao excessiva em `tesouro_selic` e passou a produzir uma carteira agregada mais diversificada. O baseline ainda depende de renda variavel sintetica, portanto a proxima validacao precisa integrar uma serie real ou proxy aberta.
+Leitura tecnica: com `BOVA11` real de 2024, a renda variavel fica bem menor que no fallback sintetico, refletindo a sequencia negativa do ativo no fim de 2024.
 
 ## Comparacao de Cenarios
 
-Execucao local com dados BCB de 2024, `90` agentes e `seed=42`.
+Execucao local com dados BCB de 2024, B3/COTAHIST `BOVA11`, `90` agentes e `seed=42`.
 
 | Cenario | Retorno acumulado medio | HHI final | Peso final em renda variavel |
 | --- | --- | --- | --- |
-| `imitation=0.0` | 9.27% | 0.2029 | 24.23% |
-| `imitation=1.0` | 9.25% | 0.2023 | 23.80% |
-| `imitation=2.0` | 9.23% | 0.2018 | 23.37% |
+| `imitation=0.0` | 6.17% | 0.2082 | 12.51% |
+| `imitation=1.0` | 6.19% | 0.2085 | 12.24% |
+| `imitation=2.0` | 6.22% | 0.2089 | 11.98% |
 
-Leitura tecnica: nesta formulacao, aumentar imitacao reduziu levemente retorno e renda variavel, mas ainda nao produziu comportamento de manada forte. Isso indica que o componente de imitacao precisa ficar mais sensivel em cenarios de estresse ou com informacao ruidosa para testar melhor a hipotese H2.
+Leitura tecnica: a imitacao aumenta levemente o HHI e reduz renda variavel. O efeito ainda e moderado, mas agora sustenta parcialmente a hipotese de concentracao por comportamento imitativo.
 
 ## Comparacao de Choques
 
-Execucao local com dados BCB de 2024, `90` agentes, `imitation=1.0` e `seed=42`.
+Execucao local com dados BCB de 2024, B3/COTAHIST `BOVA11`, `90` agentes, `imitation=1.0` e `seed=42`.
 
 | Cenario | Retorno acumulado medio | Max drawdown | Peso final em Selic | Peso final em renda variavel |
 | --- | --- | --- | --- | --- |
-| `none` | 9.25% | -0.18% | 20.68% | 23.80% |
-| `rate_hike` | 7.55% | -0.18% | 24.68% | 12.57% |
-| `inflation_spike` | 7.37% | -0.18% | 23.07% | 13.90% |
-| `equity_stress` | 3.95% | -0.66% | 27.61% | 5.95% |
-| `combined_stress` | 5.38% | -0.59% | 29.20% | 3.94% |
+| `none` | 6.19% | -0.29% | 24.68% | 12.24% |
+| `rate_hike` | 6.38% | -0.30% | 26.51% | 9.46% |
+| `inflation_spike` | 6.19% | -0.32% | 24.97% | 10.33% |
+| `equity_stress` | 2.82% | -1.15% | 28.71% | 5.11% |
+| `combined_stress` | 4.51% | -0.44% | 30.16% | 3.58% |
 
-Leitura tecnica: os cenarios de estresse ja produzem deslocamento defensivo, com aumento de caixa/Selic e queda expressiva em renda variavel. Isso melhora a capacidade do projeto de testar H1 e H2, embora a validacao final ainda dependa de dados reais mais atuais de renda variavel.
+Leitura tecnica: os cenarios de estresse produzem deslocamento defensivo, com aumento de caixa/Selic e queda expressiva em renda variavel.
+
+## Comparacao de Rebalanceamento
+
+Execucao local com dados BCB de 2024, B3/COTAHIST `BOVA11`, `90` agentes e `seed=42`.
+
+| Cenario | Retorno acumulado medio | Max drawdown | Peso final em renda variavel |
+| --- | --- | --- | --- |
+| `slow_clean` | 6.21% | -0.12% | 14.80% |
+| `base_clean` | 6.19% | -0.29% | 12.24% |
+| `fast_clean` | 6.34% | -0.47% | 10.20% |
+| `fast_noisy` | 6.36% | -0.44% | 10.12% |
+| `very_fast_noisy` | 6.55% | -0.54% | 8.79% |
+
+Leitura tecnica: H3 nao foi sustentada nesta configuracao, porque rebalanceamento mais rapido com ruido nao reduziu retorno acumulado. O custo apareceu mais em drawdown e reducao de renda variavel.
+
+## Comparacao de Perfis
+
+Execucao local com dados BCB de 2024, B3/COTAHIST `BOVA11`, `90` agentes e `seed=42`.
+
+| Cenario | Retorno acumulado medio | Max drawdown | Peso final em renda variavel |
+| --- | --- | --- | --- |
+| `heterogeneous` | 6.19% | -0.29% | 12.24% |
+| `homogeneous_conservador` | 6.89% | -0.06% | 12.71% |
+| `homogeneous_moderado` | 6.10% | -0.31% | 12.84% |
+| `homogeneous_agressivo` | 5.55% | -0.51% | 11.25% |
+
+Leitura tecnica: H4 foi parcialmente sustentada contra o perfil homogeneo agressivo, pois a populacao heterogenea teve drawdown menor.
+
+## Calibracao Inicial
+
+Arquivo gerado: `data/processed/calibration_params.json`.
+
+| Parametro observado | Valor |
+| --- | --- |
+| Volatilidade mensal Selic | 0.06% |
+| Volatilidade mensal IPCA | 0.21% |
+| Volatilidade mensal renda variavel BOVA11 | 3.16% |
+| Fluxo liquido CVM / patrimonio liquido | 0.37% |
+| Risco sugerido para renda variavel | 0.1579 |
+| Crowding penalty sugerido | 0.0500 |
+
+## Avaliacao das Hipoteses
+
+A avaliacao automatica foi salva em [docs/avaliacao_hipoteses.md](docs/avaliacao_hipoteses.md).
+
+| Hipotese | Status inicial |
+| --- | --- |
+| H1 | Parcialmente sustentada |
+| H2 | Parcialmente sustentada |
+| H3 | Nao sustentada |
+| H4 | Parcialmente sustentada |
 
 ## Estrutura Recomendada do Repositorio
 
@@ -313,13 +463,15 @@ teoria_jogos/
 |-- pyproject.toml
 |-- docs/
 |   |-- bases.md
-|   `-- referencias.md
+|   |-- referencias.md
+|   `-- avaliacao_hipoteses.md
 |-- data/
 |   |-- raw/
 |   |-- interim/
 |   `-- processed/
 |-- notebooks/
 |-- outputs/
+|   `-- report/
 |-- src/
 |   `-- teoria_jogos/
 |       |-- analysis/
@@ -331,8 +483,8 @@ teoria_jogos/
 
 ## Proximas Etapas
 
-1. Integrar serie real atualizada de renda variavel pela B3 ou por proxy aberta adequada.
-2. Incluir ingestao inicial de Tesouro Transparente e CVM Fundos.
-3. Adicionar graficos e tabelas finais para analise das hipoteses.
-4. Calibrar parametros de risco, crowding e imitacao com dados observados.
-5. Escrever a avaliacao final das hipoteses H1-H4.
+1. Revisar a interpretacao economica dos resultados e transformar a avaliacao automatica em texto final.
+2. Aplicar os parametros calibrados diretamente no simulador ou justificar por que eles ficarao apenas como referencia.
+3. Expandir o periodo historico para mais de um ano, idealmente 2020-2025.
+4. Refinar o experimento H3, porque o resultado atual nao sustentou a hipotese.
+5. Preparar uma versao final do relatorio academico/projeto.

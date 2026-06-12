@@ -3,9 +3,16 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from teoria_jogos.analysis.reports import generate_analysis_outputs
+from teoria_jogos.data.b3 import build_b3_equity_dataset, enrich_macro_with_equity
 from teoria_jogos.data.bcb import download_bcb_macro_dataset, read_macro_csv
+from teoria_jogos.data.cvm import build_cvm_summary
+from teoria_jogos.data.tesouro import build_tesouro_summary
+from teoria_jogos.models.calibration import calibrate_parameters
 from teoria_jogos.simulation.baseline import (
     run_baseline_simulation,
+    run_profile_comparison,
+    run_rebalance_comparison,
     run_scenario_comparison,
     run_shock_comparison,
     write_comparison_csv,
@@ -20,6 +27,18 @@ DEFAULT_HISTORY_PATH = Path("outputs/baseline_history.csv")
 DEFAULT_SUMMARY_PATH = Path("outputs/baseline_summary.json")
 DEFAULT_COMPARISON_PATH = Path("outputs/scenario_comparison.csv")
 DEFAULT_SHOCK_COMPARISON_PATH = Path("outputs/shock_comparison.csv")
+DEFAULT_REBALANCE_COMPARISON_PATH = Path("outputs/rebalance_comparison.csv")
+DEFAULT_PROFILE_COMPARISON_PATH = Path("outputs/profile_comparison.csv")
+DEFAULT_B3_RAW_DIR = Path("data/raw/b3")
+DEFAULT_B3_DAILY_PATH = Path("data/processed/equity_b3_daily.csv")
+DEFAULT_B3_MONTHLY_PATH = Path("data/processed/equity_b3_monthly.csv")
+DEFAULT_TESOURO_RAW_PATH = Path("data/raw/tesouro/precotaxatesourodireto.csv")
+DEFAULT_TESOURO_SUMMARY_PATH = Path("data/processed/tesouro_rates_summary.csv")
+DEFAULT_CVM_RAW_DIR = Path("data/raw/cvm")
+DEFAULT_CVM_SUMMARY_PATH = Path("data/processed/cvm_funds_summary.csv")
+DEFAULT_CALIBRATION_PATH = Path("data/processed/calibration_params.json")
+DEFAULT_REPORT_DIR = Path("outputs/report")
+DEFAULT_HYPOTHESIS_PATH = Path("docs/avaliacao_hipoteses.md")
 
 
 def main() -> None:
@@ -36,6 +55,25 @@ def main() -> None:
     fetch_parser.add_argument("--output", type=Path, default=DEFAULT_MACRO_PATH)
     fetch_parser.add_argument("--no-ibovespa", action="store_true", help="Nao tenta baixar a serie SGS 7.")
 
+    b3_parser = subparsers.add_parser("fetch-b3-equity", help="Baixa B3 COTAHIST e extrai um ativo como proxy de renda variavel.")
+    b3_parser.add_argument("--year", type=int, default=2024)
+    b3_parser.add_argument("--symbol", default="BOVA11")
+    b3_parser.add_argument("--raw-dir", type=Path, default=DEFAULT_B3_RAW_DIR)
+    b3_parser.add_argument("--daily-output", type=Path, default=DEFAULT_B3_DAILY_PATH)
+    b3_parser.add_argument("--monthly-output", type=Path, default=DEFAULT_B3_MONTHLY_PATH)
+    b3_parser.add_argument("--macro", type=Path, default=DEFAULT_MACRO_PATH)
+    b3_parser.add_argument("--enriched-macro-output", type=Path, default=DEFAULT_MACRO_PATH)
+    b3_parser.add_argument("--no-enrich-macro", action="store_true")
+
+    tesouro_parser = subparsers.add_parser("fetch-tesouro", help="Baixa e resume taxas do Tesouro Direto.")
+    tesouro_parser.add_argument("--raw-output", type=Path, default=DEFAULT_TESOURO_RAW_PATH)
+    tesouro_parser.add_argument("--summary-output", type=Path, default=DEFAULT_TESOURO_SUMMARY_PATH)
+
+    cvm_parser = subparsers.add_parser("fetch-cvm-funds", help="Baixa e resume informe diario de fundos da CVM.")
+    cvm_parser.add_argument("--year-month", default="202606")
+    cvm_parser.add_argument("--raw-dir", type=Path, default=DEFAULT_CVM_RAW_DIR)
+    cvm_parser.add_argument("--summary-output", type=Path, default=DEFAULT_CVM_SUMMARY_PATH)
+
     simulate_parser = subparsers.add_parser("simulate", help="Roda a simulacao baseline.")
     simulate_parser.add_argument("--macro", type=Path, default=DEFAULT_MACRO_PATH)
     simulate_parser.add_argument("--agents", type=int, default=300)
@@ -43,6 +81,9 @@ def main() -> None:
     simulate_parser.add_argument("--rebalance-cost", type=float, default=0.001)
     simulate_parser.add_argument("--seed", type=int, default=42)
     simulate_parser.add_argument("--shock-scenario", default="none")
+    simulate_parser.add_argument("--rebalance-multiplier", type=float, default=1.0)
+    simulate_parser.add_argument("--signal-noise", type=float, default=0.0)
+    simulate_parser.add_argument("--profile-mode", default="heterogeneous")
     simulate_parser.add_argument("--history-output", type=Path, default=DEFAULT_HISTORY_PATH)
     simulate_parser.add_argument("--summary-output", type=Path, default=DEFAULT_SUMMARY_PATH)
 
@@ -63,6 +104,38 @@ def main() -> None:
     shock_parser.add_argument("--rebalance-cost", type=float, default=0.001)
     shock_parser.add_argument("--seed", type=int, default=42)
     shock_parser.add_argument("--output", type=Path, default=DEFAULT_SHOCK_COMPARISON_PATH)
+
+    rebalance_parser = subparsers.add_parser("compare-rebalance", help="Compara frequencia de rebalanceamento e ruido de sinal.")
+    rebalance_parser.add_argument("--macro", type=Path, default=DEFAULT_MACRO_PATH)
+    rebalance_parser.add_argument("--agents", type=int, default=300)
+    rebalance_parser.add_argument("--imitation", type=float, default=1.0)
+    rebalance_parser.add_argument("--rebalance-cost", type=float, default=0.001)
+    rebalance_parser.add_argument("--seed", type=int, default=42)
+    rebalance_parser.add_argument("--output", type=Path, default=DEFAULT_REBALANCE_COMPARISON_PATH)
+
+    profile_parser = subparsers.add_parser("compare-profiles", help="Compara agentes heterogeneos e homogeneos.")
+    profile_parser.add_argument("--macro", type=Path, default=DEFAULT_MACRO_PATH)
+    profile_parser.add_argument("--agents", type=int, default=300)
+    profile_parser.add_argument("--imitation", type=float, default=1.0)
+    profile_parser.add_argument("--rebalance-cost", type=float, default=0.001)
+    profile_parser.add_argument("--seed", type=int, default=42)
+    profile_parser.add_argument("--output", type=Path, default=DEFAULT_PROFILE_COMPARISON_PATH)
+
+    report_parser = subparsers.add_parser("generate-report", help="Gera tabelas, graficos SVG e avaliacao inicial das hipoteses.")
+    report_parser.add_argument("--baseline-summary", type=Path, default=DEFAULT_SUMMARY_PATH)
+    report_parser.add_argument("--scenario-comparison", type=Path, default=DEFAULT_COMPARISON_PATH)
+    report_parser.add_argument("--shock-comparison", type=Path, default=DEFAULT_SHOCK_COMPARISON_PATH)
+    report_parser.add_argument("--rebalance-comparison", type=Path, default=DEFAULT_REBALANCE_COMPARISON_PATH)
+    report_parser.add_argument("--profile-comparison", type=Path, default=DEFAULT_PROFILE_COMPARISON_PATH)
+    report_parser.add_argument("--output-dir", type=Path, default=DEFAULT_REPORT_DIR)
+    report_parser.add_argument("--hypothesis-output", type=Path, default=DEFAULT_HYPOTHESIS_PATH)
+
+    calibration_parser = subparsers.add_parser("calibrate-parameters", help="Gera calibracao inicial a partir das bases observadas.")
+    calibration_parser.add_argument("--macro", type=Path, default=DEFAULT_MACRO_PATH)
+    calibration_parser.add_argument("--equity-monthly", type=Path, default=DEFAULT_B3_MONTHLY_PATH)
+    calibration_parser.add_argument("--tesouro-summary", type=Path, default=DEFAULT_TESOURO_SUMMARY_PATH)
+    calibration_parser.add_argument("--cvm-summary", type=Path, default=DEFAULT_CVM_SUMMARY_PATH)
+    calibration_parser.add_argument("--output", type=Path, default=DEFAULT_CALIBRATION_PATH)
 
     run_parser = subparsers.add_parser("run-baseline", help="Baixa dados do BCB e roda o baseline.")
     run_parser.add_argument("--start", default="01/01/2020", help="Data inicial em DD/MM/AAAA.")
@@ -87,6 +160,30 @@ def main() -> None:
         print(f"Macro BCB salvo em {args.output} ({len(records)} meses).")
         return
 
+    if args.command == "fetch-b3-equity":
+        records = build_b3_equity_dataset(
+            year=args.year,
+            symbol=args.symbol,
+            raw_dir=args.raw_dir,
+            daily_output=args.daily_output,
+            monthly_output=args.monthly_output,
+        )
+        print(f"Serie B3 mensal salva em {args.monthly_output} ({len(records)} meses).")
+        if not args.no_enrich_macro:
+            enriched = enrich_macro_with_equity(args.macro, args.monthly_output, args.enriched_macro_output)
+            print(f"Macro enriquecido salvo em {args.enriched_macro_output} ({len(enriched)} meses).")
+        return
+
+    if args.command == "fetch-tesouro":
+        records = build_tesouro_summary(args.raw_output, args.summary_output)
+        print(f"Resumo Tesouro salvo em {args.summary_output} ({len(records)} tipos de titulo).")
+        return
+
+    if args.command == "fetch-cvm-funds":
+        summary = build_cvm_summary(args.year_month, args.raw_dir, args.summary_output)
+        print(f"Resumo CVM salvo em {args.summary_output} ({summary['fundos']} fundos).")
+        return
+
     if args.command == "simulate":
         records = read_macro_csv(args.macro)
         history, summary = run_baseline_simulation(
@@ -96,6 +193,9 @@ def main() -> None:
             rebalance_cost=args.rebalance_cost,
             seed=args.seed,
             shock_scenario=args.shock_scenario,
+            rebalance_multiplier=args.rebalance_multiplier,
+            signal_noise=args.signal_noise,
+            profile_mode=args.profile_mode,
         )
         write_history_csv(args.history_output, history)
         write_summary_json(args.summary_output, summary)
@@ -131,6 +231,58 @@ def main() -> None:
         )
         write_comparison_csv(args.output, comparison)
         print(f"Comparacao de choques salva em {args.output}.")
+        return
+
+    if args.command == "compare-rebalance":
+        records = read_macro_csv(args.macro)
+        comparison = run_rebalance_comparison(
+            records,
+            agent_count=args.agents,
+            imitation_multiplier=args.imitation,
+            rebalance_cost=args.rebalance_cost,
+            seed=args.seed,
+        )
+        write_comparison_csv(args.output, comparison)
+        print(f"Comparacao de rebalanceamento salva em {args.output}.")
+        return
+
+    if args.command == "compare-profiles":
+        records = read_macro_csv(args.macro)
+        comparison = run_profile_comparison(
+            records,
+            agent_count=args.agents,
+            imitation_multiplier=args.imitation,
+            rebalance_cost=args.rebalance_cost,
+            seed=args.seed,
+        )
+        write_comparison_csv(args.output, comparison)
+        print(f"Comparacao de perfis salva em {args.output}.")
+        return
+
+    if args.command == "generate-report":
+        generate_analysis_outputs(
+            baseline_summary_path=args.baseline_summary,
+            scenario_comparison_path=args.scenario_comparison,
+            shock_comparison_path=args.shock_comparison,
+            rebalance_comparison_path=args.rebalance_comparison,
+            profile_comparison_path=args.profile_comparison,
+            output_dir=args.output_dir,
+            docs_output_path=args.hypothesis_output,
+        )
+        print(f"Relatorio gerado em {args.output_dir}.")
+        print(f"Avaliacao das hipoteses salva em {args.hypothesis_output}.")
+        return
+
+    if args.command == "calibrate-parameters":
+        calibration = calibrate_parameters(
+            macro_path=args.macro,
+            equity_monthly_path=args.equity_monthly,
+            tesouro_summary_path=args.tesouro_summary,
+            cvm_summary_path=args.cvm_summary,
+            output_path=args.output,
+        )
+        print(f"Calibracao salva em {args.output}.")
+        print(f"Vol mensal renda variavel: {calibration['metricas_observadas']['vol_mensal_renda_variavel']:.4f}.")
         return
 
     if args.command == "run-baseline":
