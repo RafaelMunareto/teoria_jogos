@@ -16,11 +16,24 @@ Foi incluida a primeira versao executavel do projeto:
 
 - pacote Python em `src/teoria_jogos`;
 - CLI com comandos para baixar dados do BCB e rodar simulacao;
+- comando `compare-scenarios` para comparar niveis de comportamento imitativo;
 - ingestao das series SGS/BCB de Selic, IPCA e dolar;
 - consolidacao mensal em `data/processed/macro_bcb.csv`;
 - simulacao multiagente baseline com investidores conservadores, moderados e agressivos;
 - metricas de retorno medio, turnover, concentracao HHI, drawdown e pesos finais;
 - testes unitarios em `tests/`.
+
+### Melhoria implementada - 2026-06-12
+
+A funcao de escolha de portfolio foi refinada para reduzir concentracao artificial em um unico ativo. A regra atual combina:
+
+- retorno esperado do ativo no periodo;
+- penalidade de risco por perfil de investidor;
+- ancora de perfil, preservando preferencias conservadoras, moderadas e agressivas;
+- componente de imitacao do mercado;
+- penalidade de crowding quando um ativo fica acima do peso-base do perfil.
+
+Tambem foi incluido um comparador automatico de cenarios para testar diferentes niveis de imitacao.
 
 Os arquivos em `data/` e `outputs/` sao gerados localmente e nao sao versionados, conforme `.gitignore`.
 
@@ -203,6 +216,16 @@ Saidas geradas:
 - `outputs/baseline_history.csv`;
 - `outputs/baseline_summary.json`.
 
+### Comparar cenarios de imitacao
+
+```bash
+PYTHONPATH=src python3 -m teoria_jogos.cli compare-scenarios --agents 90 --imitation-levels 0.0,1.0,2.0 --seed 42
+```
+
+Saida gerada:
+
+- `outputs/scenario_comparison.csv`.
+
 ### Rodar pipeline completo
 
 ```bash
@@ -216,14 +239,30 @@ Execucao local realizada com dados BCB de 2024, `90` agentes, `imitation=1.0` e 
 | Metrica | Valor |
 | --- | --- |
 | Periodos | 12 |
-| Retorno acumulado medio | 10.08% |
-| Retorno medio mensal | 0.80% |
-| Volatilidade mensal do retorno medio | 0.15% |
-| Max drawdown | 0.00% |
-| Concentracao HHI final | 0.9731 |
-| Peso final em Tesouro Selic | 98.64% |
+| Retorno acumulado medio | 9.27% |
+| Retorno medio mensal | 0.74% |
+| Volatilidade mensal do retorno medio | 0.45% |
+| Max drawdown | -0.18% |
+| Concentracao HHI final | 0.2025 |
+| Peso final em caixa | 17.32% |
+| Peso final em Tesouro Selic | 20.56% |
+| Peso final em Tesouro IPCA+ | 19.27% |
+| Peso final em fundos RF | 18.90% |
+| Peso final em renda variavel | 23.95% |
 
-Leitura tecnica: o baseline esta concentrando demais em `tesouro_selic`, o que e coerente com a formulacao atual, mas tambem indica que a funcao de utilidade ainda precisa ser refinada para gerar maior competicao entre ativos.
+Leitura tecnica: a nova regra reduziu a concentracao excessiva em `tesouro_selic` e passou a produzir uma carteira agregada mais diversificada. O baseline ainda depende de renda variavel sintetica, portanto a proxima validacao precisa integrar uma serie real ou proxy aberta.
+
+## Comparacao de Cenarios
+
+Execucao local com dados BCB de 2024, `90` agentes e `seed=42`.
+
+| Cenario | Retorno acumulado medio | HHI final | Peso final em renda variavel |
+| --- | --- | --- | --- |
+| `imitation=0.0` | 9.29% | 0.2031 | 24.36% |
+| `imitation=1.0` | 9.27% | 0.2025 | 23.95% |
+| `imitation=2.0` | 9.25% | 0.2020 | 23.53% |
+
+Leitura tecnica: nesta formulacao, aumentar imitacao reduziu levemente retorno e renda variavel, mas ainda nao produziu comportamento de manada forte. Isso indica que o componente de imitacao precisa ficar mais sensivel em cenarios de estresse ou com informacao ruidosa para testar melhor a hipotese H2.
 
 ## Estrutura Recomendada do Repositorio
 
@@ -251,8 +290,8 @@ teoria_jogos/
 
 ## Proximas Etapas
 
-1. Refinar a funcao de utilidade para reduzir concentracao excessiva em Tesouro Selic.
-2. Rodar comparacao sistematica entre `imitation=0.0`, `imitation=1.0` e `imitation=2.0`.
-3. Integrar serie real de renda variavel pela B3 ou por proxy aberta adequada.
-4. Adicionar cenarios de choque de juros e inflacao.
-5. Incluir ingestao inicial de Tesouro Transparente e CVM Fundos.
+1. Integrar serie real de renda variavel pela B3 ou por proxy aberta adequada.
+2. Adicionar cenarios de choque de juros e inflacao.
+3. Tornar a imitacao mais sensivel a estresse, ruido e performance recente.
+4. Incluir ingestao inicial de Tesouro Transparente e CVM Fundos.
+5. Gerar graficos e tabelas finais para analise das hipoteses.

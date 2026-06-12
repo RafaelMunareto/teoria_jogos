@@ -147,6 +147,28 @@ def run_baseline_simulation(
     return history, summary
 
 
+def run_scenario_comparison(
+    macro_records: list[dict[str, float | str]],
+    imitation_levels: Iterable[float],
+    agent_count: int = 300,
+    rebalance_cost: float = 0.001,
+    seed: int = 42,
+) -> list[dict[str, float | str]]:
+    comparison = []
+
+    for imitation_level in imitation_levels:
+        _, summary = run_baseline_simulation(
+            macro_records,
+            agent_count=agent_count,
+            imitation_multiplier=imitation_level,
+            rebalance_cost=rebalance_cost,
+            seed=seed,
+        )
+        comparison.append({"scenario": f"imitation_{imitation_level:g}", **summary})
+
+    return comparison
+
+
 def build_asset_returns(
     macro_records: list[dict[str, float | str]],
     rng: random.Random,
@@ -197,12 +219,13 @@ def choose_target_weights(
 
     for asset in ASSETS:
         expected_return = asset_returns[asset]
-        risk_penalty = profile.risk_aversion * ASSET_RISK[asset] * 0.01
-        base_anchor = profile.base_weights[asset] * 0.20
-        imitation_anchor = market_weights[asset] * imitation_strength
-        scores[asset] = expected_return - risk_penalty + base_anchor + imitation_anchor
+        risk_penalty = profile.risk_aversion * ASSET_RISK[asset] * 0.004
+        base_anchor = profile.base_weights[asset] * 0.018
+        imitation_anchor = (market_weights[asset] - profile.base_weights[asset]) * imitation_strength * 0.025
+        crowding_penalty = max(0.0, market_weights[asset] - profile.base_weights[asset]) * 0.020
+        scores[asset] = expected_return - risk_penalty + base_anchor + imitation_anchor - crowding_penalty
 
-    return softmax(scores, temperature=0.025)
+    return softmax(scores, temperature=0.060)
 
 
 def write_history_csv(path: Path, history: Iterable[dict[str, float | str]]) -> None:
@@ -220,6 +243,17 @@ def write_summary_json(path: Path, summary: dict[str, float | str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file:
         json.dump(summary, file, indent=2, ensure_ascii=False)
+
+
+def write_comparison_csv(path: Path, rows: Iterable[dict[str, float | str]]) -> None:
+    rows = list(rows)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not rows:
+        return
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def summarize(
