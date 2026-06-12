@@ -6,6 +6,10 @@ O projeto possui um baseline inicial implementado em Python, sem dependencias ex
 
 **simular a alocacao de portfolio de investidores brasileiros entre renda fixa, fundos e renda variavel sob choques de juros, inflacao e comportamento de manada.**
 
+### Status do Projeto
+
+O projeto **ainda nao esta concluido**. A fase atual e de baseline/prototipo: ja existe uma primeira pipeline executavel, mas ainda faltam refinamento teorico, calibracao empirica, comparacao sistematica de cenarios e integracao de mais bases oficiais.
+
 ### Implementacao atual - 2026-06-12
 
 Foi incluida a primeira versao executavel do projeto:
@@ -119,7 +123,7 @@ A renda variavel ainda e uma serie sintetica gerada a partir do painel macro e d
 
 ### Bases selecionadas
 
-As bases priorizadas para o recorte inicial estao listadas em [docs/bases.md](/Users/munareto/Documents/teoria_jogos/docs/bases.md:1).
+As bases priorizadas para o recorte inicial estao listadas em [docs/bases.md](docs/bases.md).
 
 | Base | Papel no projeto | Prioridade |
 | --- | --- | --- |
@@ -130,7 +134,7 @@ As bases priorizadas para o recorte inicial estao listadas em [docs/bases.md](/U
 
 ### Artigos e referencias base
 
-As referencias iniciais foram organizadas em [docs/referencias.md](/Users/munareto/Documents/teoria_jogos/docs/referencias.md:1).
+As referencias iniciais foram organizadas em [docs/referencias.md](docs/referencias.md).
 
 ### Variaveis de interesse
 
