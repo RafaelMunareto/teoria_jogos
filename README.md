@@ -8,7 +8,7 @@ O projeto possui um baseline inicial implementado em Python, sem dependencias ex
 
 ### Status do Projeto
 
-O projeto **ainda nao esta concluido**. A fase atual e de baseline/prototipo: ja existe uma primeira pipeline executavel, mas ainda faltam refinamento teorico, calibracao empirica, comparacao sistematica de cenarios e integracao de mais bases oficiais.
+O projeto **ainda nao esta concluido**. A fase atual e de baseline/prototipo: ja existe uma pipeline executavel com comparacao de cenarios, mas ainda faltam calibracao empirica, integracao de mais bases oficiais, graficos finais e avaliacao conclusiva das hipoteses.
 
 ### Implementacao atual - 2026-06-12
 
@@ -17,7 +17,9 @@ Foi incluida a primeira versao executavel do projeto:
 - pacote Python em `src/teoria_jogos`;
 - CLI com comandos para baixar dados do BCB e rodar simulacao;
 - comando `compare-scenarios` para comparar niveis de comportamento imitativo;
+- comando `compare-shocks` para comparar cenarios macro de estresse;
 - ingestao das series SGS/BCB de Selic, IPCA e dolar;
+- tentativa opcional de ingestao do IBOVESPA pela serie SGS 7;
 - consolidacao mensal em `data/processed/macro_bcb.csv`;
 - simulacao multiagente baseline com investidores conservadores, moderados e agressivos;
 - metricas de retorno medio, turnover, concentracao HHI, drawdown e pesos finais;
@@ -34,6 +36,15 @@ A funcao de escolha de portfolio foi refinada para reduzir concentracao artifici
 - penalidade de crowding quando um ativo fica acima do peso-base do perfil.
 
 Tambem foi incluido um comparador automatico de cenarios para testar diferentes niveis de imitacao.
+
+### Melhoria implementada - 2026-06-12, rodada 2
+
+Foram adicionadas duas melhorias:
+
+- a renda variavel agora usa `equity_return` real quando a coluna existe no painel macro;
+- foram incluidos cenarios de choque: `rate_hike`, `inflation_spike`, `equity_stress` e `combined_stress`.
+
+A serie SGS 7 do BCB retornou dados historicos de IBOVESPA ate 30/09/2019 na consulta local. Para 2024, a API nao retornou observacoes, entao o pipeline marcou `equity_return_source=synthetic_fallback` e manteve a renda variavel sintetica no baseline atual.
 
 Os arquivos em `data/` e `outputs/` sao gerados localmente e nao sao versionados, conforme `.gitignore`.
 
@@ -107,7 +118,12 @@ Em mercados financeiros, a decisao de cada investidor nao depende apenas de fund
 - `fundos_rf`;
 - `renda_variavel`.
 
-A renda variavel ainda e uma serie sintetica gerada a partir do painel macro e de um choque estocastico controlado por `seed`. A integracao com B3 fica para a proxima etapa.
+A renda variavel pode vir de duas fontes:
+
+- `ibovespa_sgs_7`, quando a serie historica do SGS/BCB esta disponivel para o periodo;
+- `synthetic_fallback`, quando nao ha dado real no periodo solicitado.
+
+No baseline de 2024, a renda variavel ainda usa `synthetic_fallback`. A integracao com B3 ou outra proxy aberta atualizada continua como etapa futura.
 
 ### Estrutura de jogo recomendada
 
@@ -203,6 +219,7 @@ Saidas geradas:
 - `data/raw/bcb/bcb_sgs_selic.csv`;
 - `data/raw/bcb/bcb_sgs_ipca.csv`;
 - `data/raw/bcb/bcb_sgs_usd_brl.csv`;
+- `data/raw/bcb/bcb_sgs_ibovespa.csv`, quando disponivel;
 - `data/processed/macro_bcb.csv`.
 
 ### Rodar simulacao com o CSV macro existente
@@ -226,6 +243,16 @@ Saida gerada:
 
 - `outputs/scenario_comparison.csv`.
 
+### Comparar cenarios de choque
+
+```bash
+PYTHONPATH=src python3 -m teoria_jogos.cli compare-shocks --agents 90 --imitation 1.0 --seed 42
+```
+
+Saida gerada:
+
+- `outputs/shock_comparison.csv`.
+
 ### Rodar pipeline completo
 
 ```bash
@@ -239,16 +266,16 @@ Execucao local realizada com dados BCB de 2024, `90` agentes, `imitation=1.0` e 
 | Metrica | Valor |
 | --- | --- |
 | Periodos | 12 |
-| Retorno acumulado medio | 9.27% |
+| Retorno acumulado medio | 9.25% |
 | Retorno medio mensal | 0.74% |
 | Volatilidade mensal do retorno medio | 0.45% |
 | Max drawdown | -0.18% |
-| Concentracao HHI final | 0.2025 |
-| Peso final em caixa | 17.32% |
-| Peso final em Tesouro Selic | 20.56% |
-| Peso final em Tesouro IPCA+ | 19.27% |
-| Peso final em fundos RF | 18.90% |
-| Peso final em renda variavel | 23.95% |
+| Concentracao HHI final | 0.2023 |
+| Peso final em caixa | 17.43% |
+| Peso final em Tesouro Selic | 20.68% |
+| Peso final em Tesouro IPCA+ | 19.22% |
+| Peso final em fundos RF | 18.86% |
+| Peso final em renda variavel | 23.80% |
 
 Leitura tecnica: a nova regra reduziu a concentracao excessiva em `tesouro_selic` e passou a produzir uma carteira agregada mais diversificada. O baseline ainda depende de renda variavel sintetica, portanto a proxima validacao precisa integrar uma serie real ou proxy aberta.
 
@@ -258,11 +285,25 @@ Execucao local com dados BCB de 2024, `90` agentes e `seed=42`.
 
 | Cenario | Retorno acumulado medio | HHI final | Peso final em renda variavel |
 | --- | --- | --- | --- |
-| `imitation=0.0` | 9.29% | 0.2031 | 24.36% |
-| `imitation=1.0` | 9.27% | 0.2025 | 23.95% |
-| `imitation=2.0` | 9.25% | 0.2020 | 23.53% |
+| `imitation=0.0` | 9.27% | 0.2029 | 24.23% |
+| `imitation=1.0` | 9.25% | 0.2023 | 23.80% |
+| `imitation=2.0` | 9.23% | 0.2018 | 23.37% |
 
 Leitura tecnica: nesta formulacao, aumentar imitacao reduziu levemente retorno e renda variavel, mas ainda nao produziu comportamento de manada forte. Isso indica que o componente de imitacao precisa ficar mais sensivel em cenarios de estresse ou com informacao ruidosa para testar melhor a hipotese H2.
+
+## Comparacao de Choques
+
+Execucao local com dados BCB de 2024, `90` agentes, `imitation=1.0` e `seed=42`.
+
+| Cenario | Retorno acumulado medio | Max drawdown | Peso final em Selic | Peso final em renda variavel |
+| --- | --- | --- | --- | --- |
+| `none` | 9.25% | -0.18% | 20.68% | 23.80% |
+| `rate_hike` | 7.55% | -0.18% | 24.68% | 12.57% |
+| `inflation_spike` | 7.37% | -0.18% | 23.07% | 13.90% |
+| `equity_stress` | 3.95% | -0.66% | 27.61% | 5.95% |
+| `combined_stress` | 5.38% | -0.59% | 29.20% | 3.94% |
+
+Leitura tecnica: os cenarios de estresse ja produzem deslocamento defensivo, com aumento de caixa/Selic e queda expressiva em renda variavel. Isso melhora a capacidade do projeto de testar H1 e H2, embora a validacao final ainda dependa de dados reais mais atuais de renda variavel.
 
 ## Estrutura Recomendada do Repositorio
 
@@ -290,8 +331,8 @@ teoria_jogos/
 
 ## Proximas Etapas
 
-1. Integrar serie real de renda variavel pela B3 ou por proxy aberta adequada.
-2. Adicionar cenarios de choque de juros e inflacao.
-3. Tornar a imitacao mais sensivel a estresse, ruido e performance recente.
-4. Incluir ingestao inicial de Tesouro Transparente e CVM Fundos.
-5. Gerar graficos e tabelas finais para analise das hipoteses.
+1. Integrar serie real atualizada de renda variavel pela B3 ou por proxy aberta adequada.
+2. Incluir ingestao inicial de Tesouro Transparente e CVM Fundos.
+3. Adicionar graficos e tabelas finais para analise das hipoteses.
+4. Calibrar parametros de risco, crowding e imitacao com dados observados.
+5. Escrever a avaliacao final das hipoteses H1-H4.

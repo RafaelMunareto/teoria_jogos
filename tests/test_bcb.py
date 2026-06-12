@@ -21,14 +21,20 @@ class BcbDatasetTest(unittest.TestCase):
             SgsObservation(date(2024, 1, 31), 5.0),
             SgsObservation(date(2024, 2, 29), 5.5),
         ]
+        ibovespa = [
+            SgsObservation(date(2024, 1, 31), 100_000),
+            SgsObservation(date(2024, 2, 29), 110_000),
+        ]
 
-        records = build_macro_dataset(selic, ipca, usd)
+        records = build_macro_dataset(selic, ipca, usd, ibovespa)
 
         self.assertEqual(len(records), 2)
         self.assertEqual(records[0]["month"], "2024-01-01")
         self.assertEqual(round(float(records[0]["selic_return"]), 8), round((1.0005 * 1.0005) - 1, 8))
         self.assertEqual(records[0]["ipca_rate"], 0.0042)
         self.assertAlmostEqual(float(records[1]["usd_return"]), 0.1)
+        self.assertAlmostEqual(float(records[1]["equity_return"]), 0.1)
+        self.assertEqual(records[1]["equity_return_source"], "ibovespa_sgs_7")
 
 
 if __name__ == "__main__":

@@ -85,6 +85,7 @@ def run_baseline_simulation(
     imitation_multiplier: float = 1.0,
     rebalance_cost: float = 0.001,
     seed: int = 42,
+    shock_scenario: str = "none",
 ) -> tuple[list[dict[str, float | str]], dict[str, float | str]]:
     if not macro_records:
         raise ValueError("macro_records nao pode ser vazio")
@@ -92,6 +93,7 @@ def run_baseline_simulation(
         raise ValueError("agent_count deve ser maior que zero")
 
     rng = random.Random(seed)
+    macro_records = apply_shock_scenario(macro_records, shock_scenario)
     asset_returns = build_asset_returns(macro_records, rng)
     agents = create_agents(agent_count, rng)
     market_weights = average_weights(agent.weights for agent in agents)
@@ -143,7 +145,7 @@ def run_baseline_simulation(
             }
         )
 
-    summary = summarize(history, agent_count, imitation_multiplier, rebalance_cost, seed, max_drawdown)
+    summary = summarize(history, agent_count, imitation_multiplier, rebalance_cost, seed, max_drawdown, shock_scenario)
     return history, summary
 
 
@@ -153,6 +155,7 @@ def run_scenario_comparison(
     agent_count: int = 300,
     rebalance_cost: float = 0.001,
     seed: int = 42,
+    shock_scenario: str = "none",
 ) -> list[dict[str, float | str]]:
     comparison = []
 
@@ -163,8 +166,33 @@ def run_scenario_comparison(
             imitation_multiplier=imitation_level,
             rebalance_cost=rebalance_cost,
             seed=seed,
+            shock_scenario=shock_scenario,
         )
         comparison.append({"scenario": f"imitation_{imitation_level:g}", **summary})
+
+    return comparison
+
+
+def run_shock_comparison(
+    macro_records: list[dict[str, float | str]],
+    shock_scenarios: Iterable[str],
+    agent_count: int = 300,
+    imitation_multiplier: float = 1.0,
+    rebalance_cost: float = 0.001,
+    seed: int = 42,
+) -> list[dict[str, float | str]]:
+    comparison = []
+
+    for shock_scenario in shock_scenarios:
+        _, summary = run_baseline_simulation(
+            macro_records,
+            agent_count=agent_count,
+            imitation_multiplier=imitation_multiplier,
+            rebalance_cost=rebalance_cost,
+            seed=seed,
+            shock_scenario=shock_scenario,
+        )
+        comparison.append({"scenario": shock_scenario, **summary})
 
     return comparison
 
@@ -180,8 +208,10 @@ def build_asset_returns(
         ipca_rate = float(record["ipca_rate"])
         usd_return = float(record["usd_return"])
 
-        equity_noise = rng.gauss(0.004, 0.035)
-        equity_return = 0.006 + equity_noise + (0.18 * usd_return) - (0.45 * selic_return) - (0.20 * ipca_rate)
+        equity_return = float(record.get("equity_return", math.nan))
+        if math.isnan(equity_return):
+            equity_noise = rng.gauss(0.004, 0.035)
+            equity_return = 0.006 + equity_noise + (0.18 * usd_return) - (0.45 * selic_return) - (0.20 * ipca_rate)
 
         asset_records.append(
             {
@@ -215,7 +245,9 @@ def choose_target_weights(
     imitation_multiplier: float,
 ) -> dict[str, float]:
     scores = {}
-    imitation_strength = profile.imitation_bias * imitation_multiplier
+    market_stress = max(0.0, -asset_returns["renda_variavel"])
+    stress_multiplier = 1 + (market_stress * 8)
+    imitation_strength = profile.imitation_bias * imitation_multiplier * stress_multiplier
 
     for asset in ASSETS:
         expected_return = asset_returns[asset]
@@ -223,7 +255,8 @@ def choose_target_weights(
         base_anchor = profile.base_weights[asset] * 0.018
         imitation_anchor = (market_weights[asset] - profile.base_weights[asset]) * imitation_strength * 0.025
         crowding_penalty = max(0.0, market_weights[asset] - profile.base_weights[asset]) * 0.020
-        scores[asset] = expected_return - risk_penalty + base_anchor + imitation_anchor - crowding_penalty
+        risk_off_bonus = risk_off_score(asset, market_stress)
+        scores[asset] = expected_return - risk_penalty + base_anchor + imitation_anchor - crowding_penalty + risk_off_bonus
 
     return softmax(scores, temperature=0.060)
 
@@ -263,6 +296,7 @@ def summarize(
     rebalance_cost: float,
     seed: int,
     max_drawdown: float,
+    shock_scenario: str,
 ) -> dict[str, float | str]:
     final = history[-1]
     returns = [float(row["avg_agent_return"]) for row in history]
@@ -273,6 +307,7 @@ def summarize(
         "imitation_multiplier": imitation_multiplier,
         "rebalance_cost": rebalance_cost,
         "seed": seed,
+        "shock_scenario": shock_scenario,
         "final_total_wealth": float(final["total_wealth"]),
         "cumulative_return": (float(final["total_wealth"]) / agent_count) - 1,
         "avg_monthly_return": mean(returns),
@@ -281,6 +316,55 @@ def summarize(
         "final_hhi_concentration": float(final["hhi_concentration"]),
         **{f"final_weight_{asset}": float(final[f"weight_{asset}"]) for asset in ASSETS},
     }
+
+
+def apply_shock_scenario(
+    macro_records: list[dict[str, float | str]],
+    shock_scenario: str,
+) -> list[dict[str, float | str]]:
+    if shock_scenario == "none":
+        return [dict(record) for record in macro_records]
+
+    supported = {"rate_hike", "inflation_spike", "equity_stress", "combined_stress"}
+    if shock_scenario not in supported:
+        raise ValueError(f"Cenario de choque invalido: {shock_scenario}")
+
+    shocked_records: list[dict[str, float | str]] = []
+    shock_start = len(macro_records) // 2
+
+    for index, record in enumerate(macro_records):
+        shocked = dict(record)
+        if index >= shock_start:
+            if shock_scenario in {"rate_hike", "combined_stress"}:
+                shocked["selic_return"] = float(shocked["selic_return"]) + 0.004
+                shocked["equity_return"] = _adjust_equity_return(shocked, -0.015)
+            if shock_scenario in {"inflation_spike", "combined_stress"}:
+                shocked["ipca_rate"] = float(shocked["ipca_rate"]) + 0.006
+                shocked["equity_return"] = _adjust_equity_return(shocked, -0.010)
+            if shock_scenario in {"equity_stress", "combined_stress"}:
+                shocked["usd_return"] = float(shocked["usd_return"]) + 0.030
+                shocked["equity_return"] = _adjust_equity_return(shocked, -0.060)
+            shocked["equity_return_source"] = f"{shocked.get('equity_return_source', 'synthetic_fallback')}+shock"
+        shocked_records.append(shocked)
+
+    return shocked_records
+
+
+def _adjust_equity_return(record: dict[str, float | str], delta: float) -> float:
+    current = float(record.get("equity_return", math.nan))
+    if math.isnan(current):
+        current = 0.0
+    return max(-0.60, min(0.60, current + delta))
+
+
+def risk_off_score(asset: str, market_stress: float) -> float:
+    if market_stress <= 0:
+        return 0.0
+    if asset in {"cash", "tesouro_selic"}:
+        return market_stress * 0.20
+    if asset == "renda_variavel":
+        return -market_stress * 0.28
+    return 0.0
 
 
 def weighted_return(weights: dict[str, float], returns_by_asset: dict[str, float]) -> float:

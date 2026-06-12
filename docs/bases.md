@@ -9,6 +9,7 @@ O projeto foi redirecionado para decisao financeira. Para a primeira versao, a m
 | SGS / BCData | Banco Central do Brasil | O SGS consolida e disponibiliza informacoes economico-financeiras e permite consulta automatizada via webservices. | Series macrofinanceiras para cenarios de juros, cambio e inflacao. | https://www4.bcb.gov.br/pec/series/port/aviso.asp?frame=1 |
 | Selic - interface BCData | Banco Central do Brasil | A interface de consulta JSON do BCData/SGS informa o formato padrao da API para series. | Pipeline automatizada de juros. | https://dadosabertos.bcb.gov.br/dataset/11-taxa-de-juros---selic/resource/b73edc07-bbac-430c-a2cb-b1639e605fa8 |
 | Dolar comercial diario | Banco Central do Brasil | O portal oferece cotacao diaria com formatos API, JSON e OData. | Variavel macro complementar para regime de mercado. | https://dadosabertos.bcb.gov.br/dataset/dolar-americano-usd-todos-os-boletins-diarios |
+| IBOVESPA - SGS 7 | Banco Central do Brasil | A API retornou valores historicos para 2019, mas nao retornou observacoes para 2024 na consulta local. | Proxy historica opcional para renda variavel quando disponivel. | https://api.bcb.gov.br/dados/serie/bcdata.sgs.7/dados?formato=json |
 | Taxas dos Titulos Ofertados pelo Tesouro Direto | Tesouro Transparente | O portal informava ultima atualizacao em 12/06/2026 e disponibiliza CSV diario com precos e taxas. | Retorno e atratividade relativa da renda fixa publica. | https://www.tesourotransparente.gov.br/temas/divida-publica-federal/estatisticas-e-relatorios-da-divida-publica-federal |
 | Vendas do Tesouro Direto | Tesouro Transparente | O portal informava ultima atualizacao em 12/06/2026 e descreve volume diario de vendas por tipo de titulo e vencimento. | Proxy de preferencia revelada por classe de titulo. | https://www.tesourotransparente.gov.br/temas/divida-publica-federal/estatisticas-e-relatorios-da-divida-publica-federal |
 | Resgates do Tesouro Direto | Tesouro Transparente | O portal informava ultima atualizacao em 12/06/2026 e separa resgates por recompra, vencimento e cupom. | Analise de saida, liquidez e rotatividade. | https://www.tesourotransparente.gov.br/temas/divida-publica-federal/estatisticas-e-relatorios-da-divida-publica-federal |
@@ -23,6 +24,7 @@ O projeto foi redirecionado para decisao financeira. Para a primeira versao, a m
 - Base principal para caracterizar o regime macro.
 - Ideal para juros, cambio e outras series economico-financeiras.
 - Deve alimentar o modulo de cenarios.
+- A serie SGS 7 de IBOVESPA foi integrada como opcional; se nao houver observacao no periodo, o simulador usa `synthetic_fallback`.
 
 ### 2. Tesouro Transparente
 
@@ -41,6 +43,7 @@ O projeto foi redirecionado para decisao financeira. Para a primeira versao, a m
 - Fonte oficial para mercado a vista.
 - Deve ser usada com cuidado porque as cotacoes historicas nao estao ajustadas por proventos nem inflacao.
 - Para a fase 1, o ideal e construir uma serie agregada por indice, ETF ou cesta simples.
+- Continua sendo a fonte preferencial para uma serie atualizada de renda variavel, ja que a proxy SGS 7 nao cobriu 2024.
 
 ## Ordem recomendada de ingestao
 
